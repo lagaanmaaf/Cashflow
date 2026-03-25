@@ -138,23 +138,22 @@
 
   /* Invisible Scrollbar Container for Expenses */
   .expenses-list-container {
-    max-height: 680px; /* Exactly holds ~8 expenses before scrolling */
+    max-height: 680px;
     overflow-y: auto;
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     padding-bottom: 4px;
   }
   .expenses-list-container::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, Opera */
+    display: none;
   }
 
   /* Expense row */
   .expense-row {
     background: #fff; border-radius: 16px; padding: 10px 14px;
-    display: flex; align-items: center; gap: 12;
+    display: flex; align-items: center; gap: 12px;
     border: 0.5px solid #E8E6DF;
     margin: 0 16px 8px; transition: opacity 0.2s;
-    gap: 12px;
   }
   .expense-row.disabled { background: #F7F5F0; border-color: #E0DDD5; opacity: 0.6; }
   .cat-icon {
@@ -357,6 +356,21 @@
     transition: all 0.15s;
   }
 
+  /* Analysis UI specific styles */
+  .analysis-card { background: #fff; border-radius: 18px; border: 0.5px solid #E8E6DF; padding: 18px; margin: 0 16px 12px; }
+  .progress-track { width: 100%; height: 10px; background: #EAE8E0; border-radius: 5px; overflow: hidden; margin-top: 8px; }
+  .progress-fill { height: 100%; border-radius: 5px; transition: width 0.5s ease-out; }
+  .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 16px 12px; }
+  .metric-card { background: #fff; border-radius: 18px; border: 0.5px solid #E8E6DF; padding: 16px; display: flex; flex-direction: column; gap: 4px; }
+  .metric-title { font-size: 11px; color: #8A8880; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .metric-val { font-family: 'Sora', sans-serif; font-size: 18px; font-weight: 700; color: #1A2E25; }
+  .metric-sub { font-size: 11px; font-weight: 600; margin-top: 2px; }
+  .trend-down { color: #16A34A; }
+  .trend-up { color: #DC2626; }
+  .budget-header { display: flex; justify-content: space-between; align-items: flex-end; }
+  .edit-budget-btn { background: none; border: none; color: #2563EB; font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px; margin: -4px; border-radius: 4px; }
+  .edit-budget-btn:hover { background: #EFF6FF; }
+
   /* Info Guide Cards */
   .info-card { background: #fff; border-radius: 16px; padding: 18px; border: 0.5px solid #E8E6DF; margin: 0 16px 12px; }
   .info-card-title { font-size: 15px; font-weight: 700; color: #1A2E25; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
@@ -408,6 +422,8 @@
     .summary-card { margin: 0 20px; }
     .expense-row { margin: 0 20px 10px; }
     .cat-grid { padding: 0 20px 14px; }
+    .analysis-card { margin: 0 20px 14px; }
+    .metric-grid { margin: 0 20px 14px; }
   }
 </style>
 </head>
@@ -428,6 +444,7 @@ let state = {
   expenses: savedData.expenses || [],
   categories: savedData.categories || [],
   showTotalAmt: savedData.showTotalAmt !== undefined ? savedData.showTotalAmt : true,
+  monthlyBudget: savedData.monthlyBudget || 50000,
   view: "home",
   activeTab: "home",
   selectedCat: null,
@@ -439,6 +456,8 @@ let state = {
   editTarget: null,
   showAddCatModal: false,
   newCatName: "",
+  showBudgetModal: false,
+  tempBudget: "",
   listening: false,
   voiceTextLive: "",
   toast: null,
@@ -460,39 +479,48 @@ function saveToLocal() {
   localStorage.setItem('cashflow_data', JSON.stringify({
     expenses: state.expenses,
     categories: state.categories,
-    showTotalAmt: state.showTotalAmt
+    showTotalAmt: state.showTotalAmt,
+    monthlyBudget: state.monthlyBudget
   }));
 }
 
 function getCatStyle(name) {
   const n = (name || "").toLowerCase();
+  
+  // Diversified Hardcoded Palette
   if (n.includes("zepto")) return { img: "zepto.png", bg: "#F0EBF8", color: "#7B52AB" };
-  if (n.includes("blink")) return { img: "blink.png", bg: "#FFFBE6", color: "#C47F00" };
+  if (n.includes("blink")) return { img: "blink.png", bg: "#FFFBE6", color: "#F59E0B" };
   if (n.includes("swiggy")) return { img: "swiggy.png", bg: "#FFEDD5", color: "#EA580C" };
   if (n.includes("zomato")) return { img: "zomato.png", bg: "#FCE7F3", color: "#E11D48" };
-  if (n.includes("electric")) return { img: "electricity.png", bg: "#FEF3C7", color: "#D97706" };
-  if (n.includes("food")) return { img: "food.png", bg: "#FFF3E6", color: "#D97706" };
-  if (n.includes("alcohol") || n.includes("liquor") || n.includes("wine") || n.includes("beer")) return { img: "alcohol.png", bg: "#FCE7F3", color: "#DB2777" };
+  if (n.includes("electric")) return { img: "electricity.png", bg: "#E0F2FE", color: "#0284C7" };
+  if (n.includes("food")) return { img: "food.png", bg: "#EDE9FE", color: "#8B5CF6" };
+  if (n.includes("alcohol") || n.includes("liquor") || n.includes("wine") || n.includes("beer")) return { img: "alcohol.png", bg: "#F3E8FF", color: "#9333EA" };
   if (n.includes("milk")) return { img: "milk.png", bg: "#F3F4F6", color: "#475569" };
   if (n.includes("petrol") || n.includes("fuel") || n.includes("diesel") || n.includes("cng")) return { img: "petrol.png", bg: "#FEF2F2", color: "#DC2626" };
   if (n.includes("rent") || n.includes("house")) return { img: "rent.png", bg: "#E0E7FF", color: "#4F46E5" };
   if (n.includes("shop") || n.includes("amazon") || n.includes("flipkart")) return { img: "shopping.png", bg: "#EFF6FF", color: "#2563EB" };
-  if (n.includes("tea") || n.includes("chai") || n.includes("chaai")) return { img: "tea.png", bg: "#FFEDD5", color: "#D97706" };
-  if (n.includes("water")) return { img: "water.png", bg: "#E0F2FE", color: "#2563EB" };
+  if (n.includes("tea") || n.includes("chai") || n.includes("chaai")) return { img: "tea.png", bg: "#DCFCE7", color: "#16A34A" };
+  if (n.includes("water")) return { img: "water.png", bg: "#E0F2FE", color: "#0EA5E9" };
   if (n.includes("internet") || n.includes("wifi")) return { img: "internet.png", bg: "#E0F2FE", color: "#0284C7" };
-  if (n.includes("coffee")) return { img: "coffee.png", bg: "#FEF3C7", color: "#B45309" };
-  if (n.includes("drink") || n.includes("pepsi") || n.includes("thumbsup") || n.includes("coke") || n.includes("coca")) return { img: "drinks.png", bg: "#F3F4F6", color: "#475569" };
-  if (n.includes("gas") || n.includes("cyclinder") || n.includes("lpg")) return { img: "gas.png", bg: "#FFEDD5", color: "#EA580C" };
-  if (n.includes("gift")) return { img: "gift.png", bg: "#FCE7F3", color: "#DB2777" };
+  if (n.includes("coffee")) return { img: "coffee.png", bg: "#FEF3C7", color: "#78350F" };
+  if (n.includes("drink") || n.includes("pepsi") || n.includes("thumbsup") || n.includes("coke") || n.includes("coca")) return { img: "drinks.png", bg: "#D1FAE5", color: "#059669" };
+  if (n.includes("gas") || n.includes("cyclinder") || n.includes("lpg")) return { img: "gas.png", bg: "#FEE2E2", color: "#DC2626" };
+  if (n.includes("gift")) return { img: "gift.png", bg: "#FCE7F3", color: "#EC4899" };
   if (n.includes("trip") || n.includes("travel") || n.includes("flight") || n.includes("train") || n.includes("bus") || n.includes("cab") || n.includes("ola") || n.includes("uber")) return { img: "trip.png", bg: "#ECFCCB", color: "#059669" };
-  if (n.includes("grocer")) return { img: "groceries.png", bg: "#DCFCE7", color: "#16A34A" };
+  if (n.includes("grocer")) return { img: "groceries.png", bg: "#DCFCE7", color: "#10B981" };
   if (n.includes("mobile") || n.includes("recharge")) return { img: "mobile.png", bg: "#E0E7FF", color: "#4F46E5" };
-  if (n.includes("pizza") || n.includes("dominos")) return { img: "pizza.png", bg: "#FEF2F2", color: "#DC2626" };
+  if (n.includes("pizza") || n.includes("dominos")) return { img: "pizza.png", bg: "#FEF3C7", color: "#D97706" };
   if (n.includes("credit") || n.includes("cc")) return { img: "cc.png", bg: "#F3E8FF", color: "#4338CA" };
   
-  if (n.includes("medicine") || n.includes("health")) return { icon: "💊", bg: "#FDF4FF", color: "#9333EA" };
+  if (n.includes("medicine") || n.includes("health")) return { icon: "💊", bg: "#CCFBF1", color: "#0D9488" };
 
-  return { img: "def.png", bg: "#F3F4F6", color: "#1A4D3A" };
+  // Dynamic vibrant colors for unmapped/custom categories
+  const PALETTE = ["#4F46E5", "#059669", "#D97706", "#DC2626", "#2563EB", "#7C3AED", "#DB2777", "#0D9488", "#EA580C", "#0284C7"];
+  let sum = 0;
+  for(let i=0; i<n.length; i++) sum += n.charCodeAt(i);
+  const dynColor = PALETTE[sum % PALETTE.length];
+
+  return { img: "def.png", bg: "#F3F4F6", color: dynColor };
 }
 
 function formatINR(n) {
@@ -559,7 +587,6 @@ function guessCategory(name) {
   if (n.includes("trip") || n.includes("travel") || n.includes("flight") || n.includes("train") || n.includes("bus") || n.includes("cab") || n.includes("ola") || n.includes("uber")) return "Travel";
   if (n.includes("medicine") || n.includes("doctor") || n.includes("health") || n.includes("pharmacy")) return "Health";
   
-  // Checking user defined categories so they are guessed automatically if name matches
   for (const c of state.categories) {
     if (n.includes(c.toLowerCase())) return c;
   }
@@ -567,17 +594,6 @@ function guessCategory(name) {
   return "Other";
 }
 
-const HINDI_ONES = {"ek":1,"do":2,"teen":3,"char":4,"paanch":5,"chhe":6,"saat":7,"aath":8,"nau":9,"das":10,"gyarah":11,"barah":12,"terah":13,"chaudah":14,"pandrah":15,"solah":16,"satrah":17,"atharah":18,"unnees":19,"bees":20,"tees":30,"chaalees":40,"pachaas":50,"saath":60,"sattar":70,"assi":80,"nabbe":90,"ek so":100,"do so":200,"teen so":300,"char so":400,"paanch so":500,"ek hazaar":1000,"do hazaar":2000};
-function parseHindiAmount(text) {
-  let t = text.toLowerCase().trim();
-  for (const [word,val] of Object.entries(HINDI_ONES)) t = t.replace(new RegExp(`\\b${word}\\b`,"g"),String(val));
-  t = t.replace(/(\d+)\s*(hazaar|hajar)/g,(_,n)=>String(parseInt(n)*1000));
-  t = t.replace(/(\d+)\s*(lakh)/g,(_,n)=>String(parseInt(n)*100000));
-  t = t.replace(/(\d+)\s*(so|sau)/g,(_,n)=>String(parseInt(n)*100));
-  t = t.replace(/(\d+)\s*(crore)/g,(_,n)=>String(parseInt(n)*10000000));
-  const m = t.match(/\d+(?:\.\d+)?/);
-  return m ? parseFloat(m[0]) : null;
-}
 function parseVoice(rawText) {
   let mainPart = rawText.trim(), description = "";
   const cm = rawText.match(/\bcomment\b(.+)/i);
@@ -588,16 +604,13 @@ function parseVoice(rawText) {
   
   let t = mainPart.toLowerCase().trim();
 
-  // Correct common misrecognitions
   t = t.replace(/\b(zep to|zapto|zip to|saptu|zeptoo|zipto|zep|zap|jepto)\b/g, "zepto");
 
-  // Replace hindi number words
   const HINDI_ONES = {"ek":1,"do":2,"teen":3,"char":4,"paanch":5,"chhe":6,"saat":7,"aath":8,"nau":9,"das":10,"gyarah":11,"barah":12,"terah":13,"chaudah":14,"pandrah":15,"solah":16,"satrah":17,"atharah":18,"unnees":19,"bees":20,"tees":30,"chaalees":40,"pachaas":50,"saath":60,"sattar":70,"assi":80,"nabbe":90,"hundred":100,"thousand":1000};
   for (const [word,val] of Object.entries(HINDI_ONES)) {
       t = t.replace(new RegExp(`\\b${word}\\b`,"g"), String(val));
   }
 
-  // Apply multipliers
   t = t.replace(/([\d.,]+)\s*(k|hazaar|hajar|thousand)\b/g, (_, n) => String(parseFloat(n.replace(/,/g,"")) * 1000));
   t = t.replace(/([\d.,]+)\s*(lakh|lac|lacs|lakhs)\b/g, (_, n) => String(parseFloat(n.replace(/,/g,"")) * 100000));
   t = t.replace(/([\d.,]+)\s*(crore|cr|crores)\b/g, (_, n) => String(parseFloat(n.replace(/,/g,"")) * 10000000));
@@ -633,8 +646,6 @@ function parseVoice(rawText) {
   if (currentTotal > maxTotal) maxTotal = currentTotal;
 
   let name = nameWords.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ").trim();
-  
-  // Set name to null if no valid words were found
   if (!name) name = null;
 
   return { amount: maxTotal > 0 ? maxTotal : null, name, description };
@@ -714,6 +725,29 @@ window.toggleTotalAmt = () => {
   render();
 };
 
+window.editBudget = () => {
+  state.tempBudget = state.monthlyBudget || 50000;
+  state.showBudgetModal = true;
+  render();
+};
+
+window.saveBudget = () => {
+  const val = parseFloat(state.tempBudget);
+  if (!isNaN(val) && val > 0) {
+      state.monthlyBudget = val;
+      state.showBudgetModal = false;
+      saveToLocal();
+      
+      // Trigger the inline message instead of the global toast
+      state.budgetUpdatedMsg = true; 
+      setTimeout(() => { state.budgetUpdatedMsg = false; render(); }, 3000); // Hides it after 3 seconds
+      
+      render();
+  } else {
+      showToast("Invalid budget amount", true);
+  }
+};
+
 function downloadExcel() {
   const rows = [
     ["Name","Amount","Date","Time","Category","Status","Description"],
@@ -761,12 +795,9 @@ function startVoice() {
     const text = state.voiceTextLive;
     if (text) {
       const lower = text.toLowerCase().trim();
-      
-      // Voice commands
       if (lower.startsWith("add category")) {
-        let catName = text.substring(12).trim(); // Remove "add category"
+        let catName = text.substring(12).trim();
         catName = catName.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-        
         if (catName) {
             const exists = state.categories.find(c => c.toLowerCase() === catName.toLowerCase());
             if (!exists) {
@@ -778,13 +809,12 @@ function startVoice() {
                 showCatToast(`Category [${catName}] already exists`, true);
             }
         } else {
-            showToast("Please specify a category name to add", true);
+            showToast("Please specify a category name", true);
         }
         state.voiceTextLive = "";
         render();
         return;
       }
-      
       if (lower==="undo"||lower.match(/^undo$/)) { undo(); state.voiceTextLive=""; return; }
       if (lower==="redo") { redo(); state.voiceTextLive=""; return; }
       if (lower.includes("delete all expenses")||lower.includes("delete all expense")) {
@@ -799,8 +829,6 @@ function startVoice() {
       if (lower.includes("download excel")||lower.includes("download csv")||lower.includes("download file")) {
         downloadExcel(); state.voiceTextLive=""; return;
       }
-      
-      // Default: parse as expense
       const {amount,name,description} = parseVoice(text);
       if (amount&&name) {
         saveExpense({name,amount,category:guessCategory(name),date:new Date().toISOString(),description:description||"",extras:[]});
@@ -826,6 +854,7 @@ function stopVoice() { recognition?.stop(); }
 const SVG = {
   home: (c="#8A8880") => `<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z"/><polyline points="9 21 9 12 15 12 15 21"/></svg>`,
   calendar: (c="#8A8880") => `<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+  analysis: (c="#8A8880") => `<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
   settings: (c="#8A8880") => `<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`,
   download: (c="#8A8880") => `<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
   chevronDown: `<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
@@ -845,6 +874,7 @@ const SVG = {
   clock: `<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
   calIcon18: `<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#1A4D3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
   settingsIcon18: `<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#1A4D3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`,
+  analysisIcon18: `<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#1A4D3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
   deleteIcon: `<svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>`,
   dlSmall: `<svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="#3D5247" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
 };
@@ -982,6 +1012,7 @@ function renderBottomNav(activeKey) {
   const tabs = [
     { key:"home",     label:"Home"     },
     { key:"calendar", label:"Calendar" },
+    { key:"analysis", label:"Analysis" },
     { key:"settings", label:"Settings" },
     { key:"download", label:"Download" },
   ];
@@ -1215,7 +1246,6 @@ function buildExpenseModal() {
   </div>`;
 }
 
-// ─── Add Category Modal ───────────────────────────────────────────────────────
 function renderAddCatModal() {
   if (!state.showAddCatModal) return '';
   return `<div class="modal-overlay center" onclick="state.showAddCatModal=false;render()">
@@ -1236,12 +1266,9 @@ function renderAddCatModal() {
 function addCategory() {
   const name = state.newCatName.trim();
   if (!name) { showCatToast("Enter a name", true); return; }
-  
   const exists = state.categories.find(c => c.toLowerCase() === name.toLowerCase());
   if (exists) { showCatToast(`Category [${name}] already exists`, true); return; }
-  
   snapshot(); 
-  // Title Case formatting to make it clean
   const formattedName = name.split(" ").map(w => w.charAt(0).toUpperCase() + w.toLowerCase().slice(1)).join(" ");
   state.categories = [...state.categories, formattedName];
   saveToLocal();
@@ -1251,7 +1278,24 @@ function addCategory() {
   render();
 }
 
-// ─── Date Range Modal ─────────────────────────────────────────────────────────
+function renderBudgetModal() {
+  if (!state.showBudgetModal) return '';
+  return `<div class="modal-overlay center" onclick="state.showBudgetModal=false;render()">
+    <div class="modal-box center-box" onclick="event.stopPropagation()">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <span style="font-family:'Sora',sans-serif;font-size:17px;font-weight:700;color:#1A2E25">Edit Budget Limit</span>
+        <button class="modal-close" onclick="state.showBudgetModal=false;render()">×</button>
+      </div>
+      <label class="form-label">Monthly Limit (₹)</label>
+      <input type="number" class="form-input" style="margin-bottom:16px" placeholder="e.g. 50000" id="budget-input" value="${state.tempBudget}" oninput="state.tempBudget=this.value">
+      <div class="modal-btn-row">
+        <button class="btn-cancel" onclick="state.showBudgetModal=false;render()">Cancel</button>
+        <button class="btn-save" onclick="saveBudget()">Save Limit</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 let dateRangeTemp = { start:"", end:"" };
 function openDateRangeModal() {
   dateRangeTemp = { start: state.dateRange?.start||"", end: state.dateRange?.end||"" };
@@ -1305,6 +1349,173 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ─── Analysis View ────────────────────────────────────────────────────────────
+function renderAnalysisView() {
+  const now = new Date();
+  const currYear = now.getFullYear();
+  const currMonth = now.getMonth();
+  const currDay = now.getDate();
+  const daysInMonth = new Date(currYear, currMonth + 1, 0).getDate();
+
+  let prevYear = currYear;
+  let prevMonth = currMonth - 1;
+  if (prevMonth < 0) { prevMonth = 11; prevYear--; }
+
+  const activeExps = state.expenses.filter(e => !e.disabled);
+
+  const currMonthExps = activeExps.filter(e => {
+      const d = new Date(e.date);
+      return d.getFullYear() === currYear && d.getMonth() === currMonth;
+  });
+
+  const prevMonthExps = activeExps.filter(e => {
+      const d = new Date(e.date);
+      return d.getFullYear() === prevYear && d.getMonth() === prevMonth;
+  });
+
+  // For fair MoM comparison
+  const prevMonthExpsToDate = prevMonthExps.filter(e => new Date(e.date).getDate() <= currDay);
+
+  const currSpent = currMonthExps.reduce((s, e) => s + e.amount, 0);
+  const prevSpentToDate = prevMonthExpsToDate.reduce((s, e) => s + e.amount, 0);
+
+  // 1. Budget
+  const budget = state.monthlyBudget || 50000;
+  const budgetPct = Math.min((currSpent / budget) * 100, 100);
+  const budgetColor = budgetPct < 75 ? '#16A34A' : budgetPct < 90 ? '#EAB308' : '#DC2626';
+
+// 2. MoM
+  let momText = "Same as last month";
+  let momClass = "metric-sub";
+  
+  if (prevMonthExps.length === 0) {
+      momText = "No previous month data"; // Shows when there's absolutely zero data from last month
+  } else if (prevSpentToDate > 0) {
+      const diff = currSpent - prevSpentToDate;
+      const pct = Math.abs((diff / prevSpentToDate) * 100).toFixed(1);
+      if (diff > 0) {
+          momText = `▲ ${pct}% vs last mo`;
+          momClass += " trend-up";
+      } else if (diff < 0) {
+          momText = `▼ ${pct}% vs last mo`;
+          momClass += " trend-down";
+      }
+  } else if (currSpent > 0) {
+      momText = `▲ 100% vs last mo`;
+      momClass += " trend-up";
+  }
+
+  // 3. Burn Rate
+  const burnRate = currDay > 0 ? currSpent / currDay : 0;
+  const projected = burnRate * daysInMonth;
+
+  // 4. Categories
+  const catTotals = {};
+  currMonthExps.forEach(e => {
+      const c = e.category || 'Other';
+      catTotals[c] = (catTotals[c] || 0) + e.amount;
+  });
+  const sortedCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
+
+  // 5. Heavy Hitters
+  const topExps = [...currMonthExps].sort((a, b) => b.amount - a.amount).slice(0, 4);
+
+  return `<div style="font-family:'Plus Jakarta Sans',sans-serif;background:#F7F5F0;min-height:100vh;overflow-x:hidden;padding-bottom:80px">
+    <div class="app-wrap">
+      <div class="topbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          ${SVG.analysisIcon18}
+          <span class="app-title">Analysis <span style="font-size:12px;color:#A0AFA8;font-weight:600;margin-left:6px">${MONTHS_FULL[currMonth]}</span></span>
+        </div>
+      </div>
+
+      <!-- Feature 4: Budget Thresholds -->
+      <div class="analysis-card">
+          <div class="budget-header">
+              <span class="section-title" style="padding:0">Monthly Budget</span>
+              <button class="edit-budget-btn" onclick="editBudget()">Edit Limit</button>
+          </div>
+          <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:flex-end;">
+              <div>
+                  <div style="display:flex; align-items:center; gap:10px;">
+                      <div style="font-size:24px; font-weight:700; color:#1A2E25; font-family:'Sora',sans-serif; line-height:1.2">${formatINR(currSpent)}</div>
+                      ${state.budgetUpdatedMsg ? `<span style="font-size:11px; font-weight:700; color:#16A34A; background:#DCFCE7; padding:3px 8px; border-radius:6px; animation: alertIn 0.3s forwards;">Budget Updated ✓</span>` : ''}
+                  </div>
+                  <div style="font-size:12px; color:#8A8880; font-weight:500;">of ${formatINR(budget)} limit</div>
+              </div>
+              <div style="font-size:14px; font-weight:700; color:${budgetColor}">${(currSpent/budget * 100).toFixed(1)}%</div>
+          </div>
+          <div class="progress-track">
+              <div class="progress-fill" style="width:${budgetPct}%; background:${budgetColor}"></div>
+          </div>
+      </div>
+
+      <!-- Features 2 & 3: Burn Rate & MoM -->
+      <div class="metric-grid">
+          <div class="metric-card">
+              <div class="metric-title">Burn Rate / Day</div>
+              <div class="metric-val" style="margin-top:4px">${formatINR(burnRate)}</div>
+              <div class="metric-sub" style="color:#8A8880">Proj: ${formatINR(projected)}</div>
+          </div>
+          <div class="metric-card">
+              <div class="metric-title">Month-over-Month</div>
+              ${prevMonthExps.length === 0 ? `
+                  <div style="flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 12px; font-weight: 700; color: #A0AFA8; padding-top: 3px;">
+                      No Previous Month Data Found
+                  </div>
+              ` : `
+                  <div class="metric-val" style="margin-top:4px">${formatINR(currSpent)}</div>
+                  <div class="${momClass}">${momText}</div>
+              `}
+          </div>
+      </div>
+
+      <!-- Feature 1: Category Breakdown -->
+      <div class="analysis-card">
+          <span class="section-title" style="padding:0">Category Breakdown</span>
+          <div style="margin-top:16px; display:flex; flex-direction:column; gap:16px;">
+              ${sortedCats.length === 0 ? '<div class="empty-msg" style="padding:10px 0">No data for this month</div>' : ''}
+              ${sortedCats.map(([cat, amt]) => {
+                  const pct = (amt / currSpent) * 100;
+                  const cs = getCatStyle(cat);
+                  return `
+                  <div>
+                      <div style="display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:600; margin-bottom:8px;">
+                          <div style="display:flex; align-items:center; gap:8px;">
+                              <div style="width:12px; height:12px; border-radius:4px; background:${cs.color}"></div>
+                              <span style="color:#1A2E25">${cat}</span>
+                          </div>
+                          <span>${formatINR(amt)} <span style="color:#A0AFA8;font-size:11px;font-weight:600;margin-left:6px">${pct.toFixed(0)}%</span></span>
+                      </div>
+                      <div class="progress-track" style="height:6px; margin-top:0;">
+                          <div class="progress-fill" style="width:${pct}%; background:${cs.color}; border-radius:6px;"></div>
+                      </div>
+                  </div>
+                  `;
+              }).join('')}
+          </div>
+      </div>
+
+      <!-- Feature 5: Heavy Hitters -->
+      <div class="section-head">
+          <span class="section-title">Heavy Hitters</span>
+          <span class="section-count">Top ${topExps.length}</span>
+      </div>
+      <div class="expenses-list-container" style="max-height:none; margin-bottom: 20px;">
+          ${topExps.length === 0 ? '<div class="empty-msg">No data for this month</div>' : ''}
+          ${topExps.map(e => renderExpenseRow(e)).join('')}
+      </div>
+
+      ${(state.showAddModal||state.editTarget!=null)?`<div id="expense-modal-container">${buildExpenseModal()}</div>`:''}
+      ${renderBudgetModal()}
+      
+      ${renderBottomNav(state.activeTab)}
+      ${renderDownloadAlert()}
+      ${renderToast()}
+    </div>
+  </div>`;
+}
+
 // ─── Info/Guide View ──────────────────────────────────────────────────────────
 function renderInfoView() {
   return `<div style="font-family:'Plus Jakarta Sans',sans-serif;background:#F7F5F0;min-height:100vh;overflow-x:hidden;padding-bottom:80px">
@@ -1312,13 +1523,11 @@ function renderInfoView() {
       <div class="topbar">
         <button class="cal-nav-btn" onclick="state.view='home';render()" style="width:32px;height:32px">${SVG.back}</button>
         <img src="EEE.png" alt="Cashflow" style="height: 50px; object-fit: contain;">
-        <div style="width:32px"></div> <!-- For perfect centering -->
+        <div style="width:32px"></div>
       </div>
-      
       <div class="section-head" style="margin-top:10px;">
         <span class="section-title" style="font-size: 18px;">How to use Cashflow</span>
       </div>
-
       <div class="info-card">
         <div class="info-card-title">🎙️ Voice Commands</div>
         <div class="info-card-text">Tap the <strong>Speak</strong> button and use these powerful commands:</div>
@@ -1327,7 +1536,6 @@ function renderInfoView() {
         <div class="info-bullet"><strong>Undo/Redo:</strong> Say <span class="info-highlight">Undo</span> to remove the last added expense easily.</div>
         <div class="info-bullet"><strong>Delete:</strong> Say <span class="info-highlight">Delete all expenses</span> or <span class="info-highlight">Delete all categories</span>.</div>
       </div>
-
       <div class="info-card">
         <div class="info-card-title">➕ Manual Entry & Calculator</div>
         <div class="info-card-text">We built a calculator directly into the amount field!</div>
@@ -1335,24 +1543,46 @@ function renderInfoView() {
         <div class="info-bullet">Or do math directly: Type <span class="info-highlight">=200+50+10</span> and it will automatically calculate the total.</div>
         <div class="info-bullet">You can also use <strong>Add Extra Amount</strong> to break down bills visually.</div>
       </div>
-
       <div class="info-card">
-        <div class="info-card-title">🤖 Smart Categories</div>
-        <div class="info-bullet">The app automatically understands your expenses. Typing "Zomato" will auto-categorize it as "Food".</div>
-        <div class="info-bullet">Beautiful custom icons are automatically assigned to known categories (like Zepto, Food, Rent, Water, etc.).</div>
-        <div class="info-bullet">You can always edit an expense manually to change its category.</div>
+        <div class="info-card-title">📊 Analytics & Insights</div>
+        <div class="info-bullet">Check the <strong>Analysis tab</strong> to set a Monthly Budget, see your daily Burn Rate, and discover your Category breakdowns.</div>
       </div>
 
-      <div class="info-card">
-        <div class="info-card-title">📊 Filters & Calendar</div>
-        <div class="info-bullet">Use the dropdowns on the home page to filter by Month, Year, or specific Dates to see exactly where your money went.</div>
-        <div class="info-bullet">The <strong>Calendar tab</strong> shows your day-by-day spending visually.</div>
-      </div>
+      <!-- Creator Section -->
+      <div class="info-card" style="margin-bottom: 20px;">
+        <div class="info-card-title" style="justify-content: center; font-family: 'Sora', sans-serif; font-size: 16px; color: #1A2E25; margin-bottom: 4px;">✨ Meet the Creator</div>
+        <div style="font-size: 12px; color: #A0AFA8; text-align: center; margin-bottom: 16px; font-weight: 500;">Built with AI assistance by Varun</div>
 
-      <div class="info-card">
-        <div class="info-card-title">📥 Export Data</div>
-        <div class="info-bullet">Tap the <strong>Download icon</strong> at the top right of the home screen to instantly export all your transactions as a CSV/Excel file.</div>
-        <div class="info-bullet">You can also just tap speak and say <span class="info-highlight">Download Excel</span> to get your file!</div>
+        <!-- Row 1: Claude + Gemini logos, Row 2: Insta centered between them -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+
+          <!-- Logo row -->
+          <div style="display: flex; justify-content: center; align-items: flex-start; gap: 48px;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+              <div style="width: 150px; height: 50px; border-radius: 22px; background: #F0F7FF; border: 0.5px solid #E8E6DF; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <img src="cd.png" alt="Claude" style="width: 88px; height: 88px; object-fit: contain;">
+              </div>
+              <span style="font-size: 12px; font-weight: 600; color: #8A8880;">Claude</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+              <div style="width: 150px; height: 50px; border-radius: 22px; background: #F5F0FF; border: 0.5px solid #E8E6DF; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <img src="gem.png" alt="Gemini" style="width: 88px; height: 88px; object-fit: contain;">
+              </div>
+              <span style="font-size: 12px; font-weight: 600; color: #8A8880;">Gemini</span>
+            </div>
+          </div>
+
+          <!-- Insta row — centered in the middle of the gap between the two logos -->
+          <div style="display: flex; justify-content: center;">
+            <a href="https://instagram.com/viv_ace_ious" target="_blank" style="text-decoration: none; display: flex; align-items: center; gap: 12px; background: #F7F5F0; border-radius: 30px; padding: 10px 28px 10px 14px; border: 0.5px solid #E8E6DF;">
+              <div style="width: 40px; height: 40px; border-radius: 11px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                <img src="insta.png" alt="Instagram" style="width: 40px; height: 40px; object-fit: contain; border-radius: 11px;">
+              </div>
+              <span style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 700; color: #1A2E25;">@viv_ace_ious</span>
+            </a>
+          </div>
+
+        </div>
       </div>
 
       ${renderBottomNav(state.activeTab)}
@@ -1386,7 +1616,6 @@ function renderCalendarView() {
   for (let i=0;i<firstDay;i++) cells.push(null);
   for (let d=1;d<=daysInMonth;d++) cells.push(d);
 
-  // Mode dropdown
   const modeIsOpen = openDropdown==='cal-mode-dd';
   const expIsOpen = openDropdown==='cal-exp-dd';
   const modeLabel = cv.mode==="date"?"Date Wise":"Expense Wise";
@@ -1414,7 +1643,6 @@ function renderCalendarView() {
     </div>`;
   }
 
-  // Month picker modal
   let monthPickerHTML = '';
   if (cv.showMonthPicker) {
     monthPickerHTML = `<div class="modal-overlay center" onclick="calViewState.showMonthPicker=false;render()">
@@ -1484,6 +1712,7 @@ function renderCalendarView() {
           }).join('')}
         </div>
       </div>
+      ${(state.showAddModal||state.editTarget!=null)?`<div id="expense-modal-container">${buildExpenseModal()}</div>`:''}
       ${renderBottomNav(state.activeTab)}
       ${renderDownloadAlert()}
       ${monthPickerHTML}
@@ -1549,6 +1778,7 @@ function renderCategoryView() {
       <div class="expenses-list-container">
         ${catExpenses.map(e=>renderExpenseRow(e)).join('')}
       </div>
+      ${(state.showAddModal||state.editTarget!=null)?`<div id="expense-modal-container">${buildExpenseModal()}</div>`:''}
       ${renderBottomNav(state.activeTab)}
       ${renderDownloadAlert()}
       ${renderToast()}
@@ -1688,8 +1918,9 @@ window.navClick = (key) => {
       return; 
   }
   if (key==="home") { state.activeTab="home"; state.view="home"; }
-  else if (key==="calendar") { state.activeTab="calendar"; calViewState.selExpenseName=null; }
-  else { state.activeTab=key; }
+  else if (key==="calendar") { state.activeTab="calendar"; state.view="calendar"; calViewState.selExpenseName=null; }
+  else if (key==="analysis") { state.activeTab="analysis"; state.view="analysis"; }
+  else { state.activeTab=key; state.view=key; }
   render();
 };
 window.calPrevMonth = () => {
@@ -1714,6 +1945,8 @@ function render() {
   if (!app) return;
   if (state.activeTab==='calendar') {
     app.innerHTML = renderCalendarView();
+  } else if (state.activeTab==='analysis') {
+    app.innerHTML = renderAnalysisView();
   } else if (state.activeTab==='settings') {
     app.innerHTML = renderSettingsView();
   } else if (state.view==='info') {
