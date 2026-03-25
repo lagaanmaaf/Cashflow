@@ -1460,7 +1460,7 @@ function renderAnalysisView() {
           <div class="metric-card">
               <div class="metric-title">Month-over-Month</div>
               ${prevMonthExps.length === 0 ? `
-                  <div style="flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 12px; font-weight: 700; color: #A0AFA8; padding-top: 3px;">
+                  <div style="flex: 1; display: flex; align-items: center; justify-content: flex-start; text-align: left; font-size: 13px; font-weight: 600; color: #A0AFA8; padding-top: 15px;">
                       No Previous Month Data Found
                   </div>
               ` : `
@@ -1528,24 +1528,41 @@ function renderInfoView() {
       <div class="section-head" style="margin-top:10px;">
         <span class="section-title" style="font-size: 18px;">How to use Cashflow</span>
       </div>
+      
       <div class="info-card">
-        <div class="info-card-title">🎙️ Voice Commands</div>
-        <div class="info-card-text">Tap the <strong>Speak</strong> button and use these powerful commands:</div>
-        <div class="info-bullet"><strong>Add Expense:</strong> Say <span class="info-highlight">Add 500 for Petrol</span> or <span class="info-highlight">Add 1 lakh 20 thousand for Rent</span>.</div>
-        <div class="info-bullet"><strong>Add Category:</strong> Say <span class="info-highlight">Add category Electricity</span> to create a new category instantly.</div>
-        <div class="info-bullet"><strong>Undo/Redo:</strong> Say <span class="info-highlight">Undo</span> to remove the last added expense easily.</div>
-        <div class="info-bullet"><strong>Delete:</strong> Say <span class="info-highlight">Delete all expenses</span> or <span class="info-highlight">Delete all categories</span>.</div>
+        <div class="info-card-title">🎙️ Voice Assistant (Magic feature)</div>
+        <div class="info-card-text">Tap the <strong>Speak</strong> button to control the app hands-free:</div>
+        <div class="info-bullet"><strong>Log Expenses:</strong> Say <span class="info-highlight">"Add 500 for Groceries"</span> or <span class="info-highlight">"1 thousand for Rent"</span>.</div>
+        <div class="info-bullet"><strong>Create Categories:</strong> Say <span class="info-highlight">"Add category Gym"</span>.</div>
+        <div class="info-bullet"><strong>Fix Mistakes:</strong> Say <span class="info-highlight">"Undo"</span> or <span class="info-highlight">"Redo"</span>.</div>
+        <div class="info-bullet"><strong>Export Data:</strong> Say <span class="info-highlight">"Download Excel"</span> to get your CSV file instantly.</div>
       </div>
+
       <div class="info-card">
-        <div class="info-card-title">➕ Manual Entry & Calculator</div>
-        <div class="info-card-text">We built a calculator directly into the amount field!</div>
-        <div class="info-bullet">Type regular numbers like <span class="info-highlight">500</span> directly.</div>
-        <div class="info-bullet">Or do math directly: Type <span class="info-highlight">=200+50+10</span> and it will automatically calculate the total.</div>
-        <div class="info-bullet">You can also use <strong>Add Extra Amount</strong> to break down bills visually.</div>
+        <div class="info-card-title">➕ Smart Manual Entry</div>
+        <div class="info-card-text">Fast logging with a built-in calculator:</div>
+        <div class="info-bullet"><strong>Math in Amount:</strong> Type <span class="info-highlight">=200+50*2</span> directly; it calculates the total for you.</div>
+        <div class="info-bullet"><strong>Split Bills:</strong> Tap <strong>Add Extra Amount</strong> to itemize taxes or split costs in one entry.</div>
+        <div class="info-bullet"><strong>Auto-Icons:</strong> Type known brands (e.g., Zomato, Uber, Amazon) and the app automatically assigns the right category and icon!</div>
       </div>
+
       <div class="info-card">
-        <div class="info-card-title">📊 Analytics & Insights</div>
-        <div class="info-bullet">Check the <strong>Analysis tab</strong> to set a Monthly Budget, see your daily Burn Rate, and discover your Category breakdowns.</div>
+        <div class="info-card-title">📊 Analysis & Budgeting</div>
+        <div class="info-bullet"><strong>Set Limits:</strong> Go to Analysis, tap <strong>Edit Limit</strong> to set your monthly budget, and watch the progress bar.</div>
+        <div class="info-bullet"><strong>Burn Rate:</strong> Track your daily spending average and month-end projections.</div>
+        <div class="info-bullet"><strong>Heavy Hitters:</strong> Easily spot your largest transactions dragging down your budget.</div>
+      </div>
+
+      <div class="info-card">
+        <div class="info-card-title">📅 Calendar & Filters</div>
+        <div class="info-bullet"><strong>Heat Map:</strong> The Calendar tab highlights days with higher spending in dark green.</div>
+        <div class="info-bullet"><strong>Deep Search:</strong> Use the dropdowns (Month/Year) or the Calendar button on the Home screen to filter by a specific Date Range.</div>
+      </div>
+
+      <div class="info-card">
+        <div class="info-card-title">⚙️ Manage & Organize</div>
+        <div class="info-bullet"><strong>Exclude Expenses:</strong> Tap the eye icon on any expense to hide its amount from your total sum without deleting it.</div>
+        <div class="info-bullet"><strong>Hide Total:</strong> Tap the eye icon on the main green <strong>Total Spent</strong> card to hide your balance from shoulder surfers.</div>
       </div>
 
       <!-- Creator Section -->
@@ -1557,28 +1574,26 @@ function renderInfoView() {
         <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
 
           <!-- Logo row -->
-          <div style="display: flex; justify-content: center; align-items: flex-start; gap: 48px;">
+          <div style="display: flex; justify-content: center; align-items: flex-start; gap: 32px;"> 
             <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-              <div style="width: 150px; height: 50px; border-radius: 22px; background: #F0F7FF; border: 0.5px solid #E8E6DF; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                <img src="cd.png" alt="Claude" style="width: 88px; height: 88px; object-fit: contain;">
+              <div style="width: 155px; height: 65px; border-radius: 22px; background: #F0F7FF; border: 0.5px solid #E8E6DF; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <img src="cd.png" alt="Claude" style="width: 110px; height: 95px; object-fit: contain;">
               </div>
-              <span style="font-size: 12px; font-weight: 600; color: #8A8880;">Claude</span>
             </div>
             <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-              <div style="width: 150px; height: 50px; border-radius: 22px; background: #F5F0FF; border: 0.5px solid #E8E6DF; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                <img src="gem.png" alt="Gemini" style="width: 88px; height: 88px; object-fit: contain;">
+              <div style="width: 155px; height: 65px; border-radius: 22px; background: #F5F0FF; border: 0.5px solid #E8E6DF; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <img src="gem.png" alt="Gemini" style="width: 110px; height: 105px; object-fit: contain;">
               </div>
-              <span style="font-size: 12px; font-weight: 600; color: #8A8880;">Gemini</span>
             </div>
           </div>
 
           <!-- Insta row — centered in the middle of the gap between the two logos -->
           <div style="display: flex; justify-content: center;">
-            <a href="https://instagram.com/viv_ace_ious" target="_blank" style="text-decoration: none; display: flex; align-items: center; gap: 12px; background: #F7F5F0; border-radius: 30px; padding: 10px 28px 10px 14px; border: 0.5px solid #E8E6DF;">
-              <div style="width: 40px; height: 40px; border-radius: 11px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
-                <img src="insta.png" alt="Instagram" style="width: 40px; height: 40px; object-fit: contain; border-radius: 11px;">
+            <a href="https://instagram.com/viv_ace_ious" target="_blank" style="text-decoration: none; display: flex; align-items: center; gap: 10px; background: #F7F5F0; border-radius: 30px; padding: 0 24px 0 10px; height: 44px; border: 0.5px solid #E8E6DF;">
+              <div style="width: 30px; height: 30px; border-radius: 9px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                <img src="insta.png" alt="Instagram" style="width: 30px; height: 30px; object-fit: contain; border-radius: 9px;">
               </div>
-              <span style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 700; color: #1A2E25;">@viv_ace_ious</span>
+              <span style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; font-weight: 700; color: #1A2E25;">@viv_ace_ious</span>
             </a>
           </div>
 
