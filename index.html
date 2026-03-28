@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+<!-- SheetJS for Excel Parsing -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; font-family: 'Plus Jakarta Sans', sans-serif; background: #F7F5F0; }
@@ -442,9 +444,14 @@ let state = {
   catToast: null,
   showDownloadAlert: false,
   showExcludeAlert: true,
+  excelErrors: null,
+  showExcelErrorModal: false
 };
 
 let catChartState = { period: 'month', fullscreen: false };
+// Separate filter state for category view — completely isolated from home page filters
+let catViewFilters = { selMonths: [], selYears: [], dateRange: null };
+let catViewDateRangeTemp = { start: "", end: "" };
 
 let history = [];
 let future = [];
@@ -523,6 +530,25 @@ function parseDDMMYYYY(s) {
   const d = new Date(`${yyyy}-${mm}-${dd}`);
   return isNaN(d) ? null : d;
 }
+function robustDateParse(dStr, tStr) {
+  if (!dStr || !tStr) return new Date().toISOString();
+  let parts = dStr.split(/[-/]/);
+  let day, month, year;
+  if (parts.length === 3) {
+      if (parts[2].length === 4) {
+         day = parts[0]; month = parts[1]; year = parts[2];
+      } else if (parts[0].length === 4) {
+         year = parts[0]; month = parts[1]; day = parts[2];
+      } else {
+         day = parts[0]; month = parts[1]; year = "20"+parts[2];
+      }
+      let d = new Date(`${year}-${month.padStart(2,'0')}-${day.padStart(2,'0')}T${tStr.padStart(5,'0')}:00`);
+      if (!isNaN(d)) return d.toISOString();
+  }
+  let d = new Date(`${dStr} ${tStr}`);
+  if (!isNaN(d)) return d.toISOString();
+  return new Date().toISOString();
+}
 function evalAmount(raw) {
   if (!raw) return null;
   const cleaned = String(raw).replace(/^=/,"").replace(/[^0-9.+\-*/()]/g,"");
@@ -530,6 +556,10 @@ function evalAmount(raw) {
   if (typeof r==="number" && isFinite(r)) return parseFloat(r.toFixed(2)); } catch {}
   const plain = parseFloat(cleaned);
   return isNaN(plain) ? null : plain;
+}
+function escHtml(s) {
+  if (s==null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function guessCategory(name) {
   const n = name.toLowerCase();
@@ -741,6 +771,131 @@ function downloadExcel() {
   a.click();
   showToast("Excel file downloaded");
 }
+
+window.handleExcelUpload = (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, {type: 'array'});
+      const firstSheet = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheet];
+      const json = XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false });
+
+      let errors = [];
+      let newExpenses = [];
+
+      json.forEach((row, index) => {
+        const keys = Object.keys(row);
+        const getVal = (possibleNames) => {
+          for (let k of keys) {
+            if (possibleNames.some(pn => k.toLowerCase().trim() === pn)) return String(row[k]).trim();
+          }
+          return "";
+        };
+
+        const name = getVal(["expense name", "name", "expense"]);
+        const amountRaw = getVal(["expense amount", "amount", "price"]);
+        const dateVal = getVal(["date"]);
+        const timeVal = getVal(["time"]);
+        const desc = getVal(["description", "desc", "note", "notes"]);
+
+        let missing = [];
+        if (!name && !amountRaw && !dateVal && !timeVal && !desc) return; // Skip completely empty rows
+
+        if (!name) missing.push("Expense Name");
+        if (!amountRaw || isNaN(parseFloat(amountRaw.replace(/[^0-9.-]/g,'')))) missing.push("Amount");
+        if (!dateVal) missing.push("Date");
+        if (!timeVal) missing.push("Time");
+
+        if (missing.length > 0) {
+          errors.push(`Row ${index + 2}: Missing ${missing.join(", ")}`);
+          return;
+        }
+
+        let finalDate = dateVal;
+        let finalTime = timeVal;
+
+        if (dateVal.toLowerCase() === 'default') finalDate = todayStr();
+        if (timeVal.toLowerCase() === 'default') finalTime = nowTimeStr();
+
+        let iso;
+        try {
+           iso = robustDateParse(finalDate, finalTime);
+        } catch(err) {
+           iso = new Date().toISOString();
+        }
+
+        const amount = parseFloat(amountRaw.replace(/[^0-9.-]/g,''));
+
+        newExpenses.push({
+          id: Date.now() + index + Math.floor(Math.random()*1000), 
+          name: name,
+          amount: amount,
+          date: iso,
+          category: guessCategory(name),
+          disabled: false,
+          description: desc,
+          extras: []
+        });
+      });
+
+      if (errors.length > 0) {
+        state.excelErrors = errors;
+        state.showExcelErrorModal = true;
+      } else if (newExpenses.length > 0) {
+         snapshot();
+         newExpenses.forEach(exp => {
+             let matched = false;
+             for (const c of state.categories) {
+                 if (exp.name.toLowerCase().includes(c.toLowerCase())) {
+                     exp.category = c;
+                     matched = true;
+                     break;
+                 }
+             }
+             if (!matched) exp.category = guessCategory(exp.name);
+         });
+         state.expenses = [...newExpenses.reverse(), ...state.expenses]; 
+         saveToLocal();
+         showToast(`Successfully uploaded ${newExpenses.length} expenses!`);
+      } else {
+         showToast("No valid expenses found in file.", true);
+      }
+    } catch (error) {
+      showToast("Error reading file format.", true);
+    }
+    render();
+    event.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+};
+
+function renderExcelErrorModal() {
+  if (!state.showExcelErrorModal) return '';
+  return `<div class="modal-overlay center" onclick="state.showExcelErrorModal=false;render()">
+    <div class="modal-box center-box" onclick="event.stopPropagation()">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:28px;height:28px;background:#FEF2F2;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#DC2626">${SVG.info}</div>
+          <span style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:#1A2E25">Upload Failed</span>
+        </div>
+        <button class="modal-close" onclick="state.showExcelErrorModal=false;render()">×</button>
+      </div>
+      <p style="font-size:13px; color:#3D3D3A; margin-bottom: 12px; line-height: 1.5;">We found missing details in your Excel file. No expenses were uploaded.</p>
+      <div style="background:#F7F5F0; border-radius: 12px; padding: 12px; max-height: 200px; overflow-y: auto; margin-bottom: 16px; border: 0.5px solid #E8E6DF;">
+        <ul style="font-size:12px; color:#DC2626; padding-left: 16px; margin: 0; line-height:1.6;">
+          ${state.excelErrors.map(e => `<li>${e}</li>`).join('')}
+        </ul>
+      </div>
+      <button class="btn-cancel" style="width:100%" onclick="state.showExcelErrorModal=false;render()">Close</button>
+    </div>
+  </div>`;
+}
+
 function applyFilters(list) {
   return list.filter(e => {
     const d = new Date(e.date);
@@ -858,6 +1013,7 @@ const SVG = {
   analysis: (c="#8A8880") => `<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
   settings: (c="#8A8880") => `<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`,
   download: (c="#8A8880") => `<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  upload: `<svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="#3D5247" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
   chevronDown: `<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
   back: `<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#3D5247" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>`,
   chevLeft: `<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#3D5247" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`,
@@ -969,6 +1125,53 @@ function renderCatFilterRow() {
   </div>`;
 }
 
+function renderCatViewFilterRow(expenses) {
+  // Isolated month dropdown for category view
+  const availableMonths = [...new Set(expenses.map(e => new Date(e.date).getMonth()))].sort((a,b)=>a-b);
+  const selM = catViewFilters.selMonths;
+  const mLabel = selM.length===0 ? "All Months" : selM.length===1 ? MONTHS_FULL[selM[0]] : `${selM.length} months`;
+  const mOpen = openDropdown === 'cvf-month-dd';
+  const monthDD = `<div class="dropdown-wrap">
+    <button class="dropdown-btn${selM.length>0?' active':''}" onclick="toggleDropdown('cvf-month-dd',event)">${mLabel} ${SVG.chevronDown}</button>
+    <div class="dropdown-menu${mOpen?' open':''}" id="cvf-month-dd">
+      <div style="padding:6px 0">
+        <div class="dropdown-item${selM.length===0?' selected':''}" onclick="setCatViewMonthFilter([])">
+          <span class="chk-box${selM.length===0?' checked':''}">${selM.length===0?checkboxSVG():''}</span>All Months
+        </div>
+        ${availableMonths.map(idx=>`
+          <div class="dropdown-item${selM.includes(idx)?' selected':''}" onclick="toggleCatViewMonth(${idx})">
+            <span class="chk-box${selM.includes(idx)?' checked':''}">${selM.includes(idx)?checkboxSVG():''}</span>${MONTHS_FULL[idx]}
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+
+  // Isolated year dropdown for category view
+  const availableYears = [...new Set(expenses.map(e => new Date(e.date).getFullYear()))].sort((a,b)=>b-a);
+  const selY = catViewFilters.selYears;
+  const yLabel = selY.length===0 ? "All Years" : selY.length===1 ? String(selY[0]) : `${selY.length} years`;
+  const yOpen = openDropdown === 'cvf-year-dd';
+  const yearDD = `<div class="dropdown-wrap">
+    <button class="dropdown-btn${selY.length>0?' active':''}" onclick="toggleDropdown('cvf-year-dd',event)">${yLabel} ${SVG.chevronDown}</button>
+    <div class="dropdown-menu${yOpen?' open':''}" id="cvf-year-dd">
+      <div style="padding:6px 0">
+        <div class="dropdown-item${selY.length===0?' selected':''}" onclick="setCatViewYearFilter([])">
+          <span class="chk-box${selY.length===0?' checked':''}">${selY.length===0?checkboxSVG():''}</span>All Years
+        </div>
+        ${availableYears.map(yr=>`
+          <div class="dropdown-item${selY.includes(yr)?' selected':''}" onclick="toggleCatViewYear(${yr})">
+            <span class="chk-box${selY.includes(yr)?' checked':''}">${selY.includes(yr)?checkboxSVG():''}</span>${yr}
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+
+  const hasDateRange = catViewFilters.dateRange && (catViewFilters.dateRange.start || catViewFilters.dateRange.end);
+  const calBtn = `<button class="cal-btn${hasDateRange?' active':''}" onclick="openCatViewDateRangeModal()" title="${hasDateRange?'Date filter active':'Filter by date range'}">${SVG.calSmall}</button>`;
+
+  return `<div class="filter-row">${monthDD}${yearDD}${calBtn}</div>`;
+}
+
 function renderExpenseRow(e) {
   const cs = getCatStyle(e.category);
   return `<div class="expense-row${e.disabled?' disabled':''}">
@@ -997,50 +1200,154 @@ function renderExpenseRow(e) {
 function renderCatBarChart(expenses) {
   const active = expenses.filter(e=>!e.disabled);
   if (!active.length) return `<div class="empty-msg">No expenses to chart</div>`;
-  
+
+  // 60 fully distinct gradient pairs — every two colors come from completely different hue families
+  // so no two adjacent or nearby bars ever look like "same color, lighter/darker"
+  const GRAD_POOL = [
+    ['#DC2626','#7C3AED'], // red → purple
+    ['#059669','#F59E0B'], // emerald → amber
+    ['#2563EB','#EC4899'], // blue → pink
+    ['#D97706','#06B6D4'], // amber → cyan
+    ['#7C3AED','#10B981'], // purple → green
+    ['#F43F5E','#3B82F6'], // rose → blue
+    ['#0EA5E9','#F97316'], // sky → orange
+    ['#8B5CF6','#22C55E'], // violet → lime
+    ['#EF4444','#14B8A6'], // red → teal
+    ['#F59E0B','#6366F1'], // amber → indigo
+    ['#10B981','#E879F9'], // emerald → fuchsia
+    ['#3B82F6','#FBBF24'], // blue → yellow
+    ['#EC4899','#34D399'], // pink → emerald
+    ['#06B6D4','#A855F7'], // cyan → purple
+    ['#84CC16','#F43F5E'], // lime → rose
+    ['#6366F1','#FB923C'], // indigo → orange
+    ['#F97316','#38BDF8'], // orange → sky blue
+    ['#A855F7','#4ADE80'], // purple → green
+    ['#EF4444','#818CF8'], // red → slate-blue
+    ['#FBBF24','#0284C7'], // yellow → blue
+    ['#22D3EE','#FB7185'], // cyan → rose
+    ['#4F46E5','#86EFAC'], // indigo → light green
+    ['#DB2777','#67E8F9'], // pink → light cyan
+    ['#16A34A','#FCA5A5'], // green → light red
+    ['#7E22CE','#FDE68A'], // dark purple → pale yellow
+    ['#B45309','#A5F3FC'], // brown → light sky
+    ['#BE185D','#BBF7D0'], // deep pink → mint
+    ['#1D4ED8','#FED7AA'], // navy → peach
+    ['#0F766E','#E9D5FF'], // teal → lavender
+    ['#C2410C','#BFDBFE'], // burnt orange → pale blue
+    ['#15803D','#FCE7F3'], // forest → pale pink
+    ['#7C2D12','#CFFAFE'], // dark red → light cyan
+    ['#4338CA','#DCFCE7'], // deep indigo → pale green
+    ['#9D174D','#FEF9C3'], // crimson → pale yellow
+    ['#065F46','#FEE2E2'], // dark teal → pale red
+    ['#1E3A5F','#FEF3C7'], // dark navy → pale amber
+    ['#581C87','#D1FAE5'], // dark purple → pale emerald
+    ['#78350F','#EDE9FE'], // coffee → pale violet
+    ['#064E3B','#FDF4FF'], // dark green → pale purple
+    ['#701A75','#ECFDF5'], // deep magenta → pale mint
+    ['#1E40AF','#FFF7ED'], // dark blue → warm white
+    ['#92400E','#F0FDF4'], // dark amber → pale green
+    ['#7F1D1D','#F0F9FF'], // dark red → pale sky
+    ['#14532D','#FFF1F2'], // dark emerald → pale rose
+    ['#1E1B4B','#F9FAFB'], // deepest indigo → near white
+    ['#FF6B6B','#4ECDC4'], // coral → turquoise
+    ['#FFE66D','#A8E6CF'], // yellow → mint
+    ['#FF8B94','#6BCB77'], // salmon → grass green
+    ['#C77DFF','#FFB347'], // violet → peach
+    ['#00B4D8','#F4A261'], // ocean → sand
+    ['#E63946','#457B9D'], // crimson → steel blue
+    ['#2EC4B6','#E76F51'], // teal → terracotta
+    ['#FFBC42','#56CFE1'], // golden → ice blue
+    ['#F72585','#4CC9F0'], // hot pink → neon sky
+    ['#7209B7','#4CC9F0'], // deep purple → neon sky
+    ['#3A0CA3','#F72585'], // royal blue → hot pink
+    ['#480CA8','#FB5607'], // purple → vivid orange
+    ['#B5179E','#06D6A0'], // magenta → mint
+    ['#023E8A','#FFD60A'], // deep navy → bright yellow
+    ['#D62828','#06A77D'], // deep red → jungle green
+  ];
+
   const grouped = {};
   active.forEach(e => {
     const d = new Date(e.date);
-    let key = '';
-    let sortKey = 0;
-    if (catChartState.period === 'day') {
-       key = `${String(d.getDate()).padStart(2,'0')} ${MONTHS[d.getMonth()]}`;
-       sortKey = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    } else if (catChartState.period === 'month') {
-       key = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-       sortKey = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    let key = '', sortKey = 0;
+    if (catChartState.period === 'month') {
+      key = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+      sortKey = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
     } else {
-       key = `${d.getFullYear()}`;
-       sortKey = new Date(d.getFullYear(), 0, 1).getTime();
+      key = `${d.getFullYear()}`;
+      sortKey = new Date(d.getFullYear(), 0, 1).getTime();
     }
     if (!grouped[key]) grouped[key] = { amt: 0, sortKey };
     grouped[key].amt += e.amount;
   });
-  
-  let entries = Object.entries(grouped).map(([label, data]) => ({ label, amt: data.amt, sortKey: data.sortKey }));
+
+  let entries = Object.entries(grouped).map(([label, data]) => ({
+    label, amt: data.amt, sortKey: data.sortKey
+  }));
   entries.sort((a,b) => a.sortKey - b.sortKey);
-  
-  const numBars = entries.length;
+
+  // Assign gradient by position in the sorted list — guaranteed no repeats for first 60 entries
+  entries = entries.map((e, i) => {
+    const pair = GRAD_POOL[i % GRAD_POOL.length];
+    return { ...e, c1: pair[0], c2: pair[1] };
+  });
+
+  if (!entries.length) return `<div class="empty-msg">No data</div>`;
+
+  const n = entries.length;
   const maxAmt = Math.max(...entries.map(e => e.amt));
-  const chartHeight = catChartState.fullscreen ? '55vh' : '110px';
-  
-  // Dynamic scaling so any number of bars fits gracefully
-  const gap = numBars > 50 ? '1px' : numBars > 20 ? '2px' : catChartState.fullscreen ? '16px' : '8px';
-  const maxBarWidth = numBars > 50 ? '3px' : numBars > 20 ? '8px' : catChartState.fullscreen ? '60px' : '30px';
-  const showTopAmt = numBars <= (catChartState.fullscreen ? 15 : 8);
-  
-  return `<div class="bar-chart-wrap" style="height: ${chartHeight}; align-items: flex-end; justify-content: center; gap: ${gap}; width: 100%;">
-    ${entries.map((e, i) => {
-      // Sparsify labels when overcrowded to maintain clean UI
-      const labelStep = Math.ceil(numBars / (catChartState.fullscreen ? 12 : 6)); 
-      const showLabel = (i % labelStep === 0) || i === numBars - 1;
-      
-      return `<div class="bar-col" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; min-width:1px;">
-        ${showTopAmt ? `<span class="bar-val" style="font-size:${catChartState.fullscreen?'12px':'9px'}; color:#1A4D3A; font-weight:700;">${formatCatAmt(e.amt)}</span>` : ''}
-        <div class="bar-body" style="width:100%; max-width: ${maxBarWidth}; background: linear-gradient(180deg, #1A4D3A 0%, #7ABDA8 100%); border-radius: 4px 4px 2px 2px; height: ${maxAmt>0?Math.max(10, (e.amt/maxAmt)*(catChartState.fullscreen?50:80)):10}${catChartState.fullscreen?'vh':'px'}; box-shadow: 0 4px 10px rgba(26,77,58,0.2);"></div>
-        ${showLabel ? `<span class="bar-label" style="font-size:${catChartState.fullscreen?'11px':'9px'}; color:#8A8880; font-weight:600; text-align:center; white-space:nowrap;">${e.label}</span>` : `<div style="height:${catChartState.fullscreen?'16px':'13px'}; width:1px;"></div>`}
-      </div>`;
-    }).join('')}
+
+  const rowH = catChartState.fullscreen ? 36 : 32;
+  const rowGap = catChartState.fullscreen ? 8 : 6;
+  const labelW = catChartState.fullscreen ? 80 : 70;
+  const amtW = catChartState.fullscreen ? 76 : 68;
+  const padT = 8, padB = 8, padL = 4, padR = 4;
+  const barAreaW = catChartState.fullscreen ? 220 : 160;
+  const totalW = padL + labelW + 8 + barAreaW + 8 + amtW + padR;
+  const totalH = padT + padB + n * rowH + (n - 1) * rowGap;
+  const chartId = `hbar-${Date.now()}`;
+
+  // Build gradient defs — one per entry
+  const gradDefs = entries.map((e, i) =>
+    `<linearGradient id="bg-${chartId}-${i}" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="${e.c1}"/>
+      <stop offset="100%" stop-color="${e.c2}"/>
+    </linearGradient>
+    <linearGradient id="lb-${chartId}-${i}" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="${e.c1}" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="${e.c2}" stop-opacity="0.15"/>
+    </linearGradient>`
+  ).join('');
+
+  const rows = entries.map((e, i) => {
+    const y = padT + i * (rowH + rowGap);
+    const barW = maxAmt > 0 ? Math.max(6, (e.amt / maxAmt) * barAreaW) : 6;
+    const isMax = e.amt === maxAmt;
+    const cx = padL + labelW + 8;
+    const barY = y + rowH * 0.2;
+    const barH2 = rowH * 0.6;
+    const cy = y + rowH / 2;
+
+    return `
+      <rect x="${padL}" y="${y}" width="${labelW}" height="${rowH}" rx="8" fill="url(#lb-${chartId}-${i})"/>
+      <text x="${padL + labelW/2}" y="${cy + 1}" text-anchor="middle" dominant-baseline="middle"
+        font-size="${catChartState.fullscreen ? 11 : 10}" font-weight="700" fill="${e.c1}"
+        font-family="Plus Jakarta Sans,sans-serif">${e.label}</text>
+      <rect x="${cx}" y="${barY}" width="${barAreaW}" height="${barH2}" rx="6" fill="#F0F0EE"/>
+      <rect x="${cx}" y="${barY}" width="${barW}" height="${barH2}" rx="6" fill="url(#bg-${chartId}-${i})"/>
+      <text x="${cx + barAreaW + 8}" y="${cy + 1}" text-anchor="start" dominant-baseline="middle"
+        font-size="${catChartState.fullscreen ? 12 : 11}" font-weight="700" fill="${isMax ? e.c1 : '#1A2E25'}"
+        font-family="Sora,sans-serif">${formatCatAmt(e.amt)}</text>
+      ${isMax ? `<text x="${cx + barAreaW + 8}" y="${cy + 14}" text-anchor="start"
+        font-size="8" font-weight="700" fill="${e.c1}" font-family="Plus Jakarta Sans,sans-serif">▲ PEAK</text>` : ''}
+    `;
+  });
+
+  return `<div style="overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; max-height:${catChartState.fullscreen ? '75vh' : '340px'};">
+    <svg width="100%" viewBox="0 0 ${totalW} ${totalH}" xmlns="http://www.w3.org/2000/svg" id="${chartId}" style="display:block;">
+      <defs>${gradDefs}</defs>
+      ${rows.join('')}
+    </svg>
   </div>`;
 }
 
@@ -1415,9 +1722,53 @@ function buildDateRangeModal() {
     </div>
   </div>`;
 }
-function escHtml(s) {
-  if (s==null) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+// ─── Category view date range modal (isolated from main state) ────────────────
+function openCatViewDateRangeModal() {
+  catViewDateRangeTemp = { start: catViewFilters.dateRange?.start||"", end: catViewFilters.dateRange?.end||"" };
+  document.getElementById('date-range-modal-wrap').innerHTML = buildCatViewDateRangeModal();
+  document.getElementById('date-range-modal-wrap').style.display = 'block';
+}
+function closeCatViewDateRangeModal() {
+  document.getElementById('date-range-modal-wrap').style.display = 'none';
+}
+function applyCatViewDateRange() {
+  catViewFilters.dateRange = { start:catViewDateRangeTemp.start, end:catViewDateRangeTemp.end };
+  closeCatViewDateRangeModal();
+  render();
+}
+function clearCatViewDateRange() {
+  catViewFilters.dateRange = null;
+  closeCatViewDateRangeModal();
+  render();
+}
+function buildCatViewDateRangeModal() {
+  return `<div class="modal-overlay center" onclick="closeCatViewDateRangeModal()">
+    <div class="modal-box center-box" onclick="event.stopPropagation()">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <div style="width:28px;height:28px;background:#EFF6FF;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#2563EB">${SVG.calSmall}</div>
+          <span style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:#1A2E25">Filter by Date Range</span>
+        </div>
+        <button class="modal-close" onclick="closeCatViewDateRangeModal()">×</button>
+      </div>
+      <label class="form-label">Start Date</label>
+      <div class="input-with-icon" style="margin-bottom:14px">
+        <input class="form-input" placeholder="dd-mm-yyyy" value="${escHtml(catViewDateRangeTemp.start)}" oninput="catViewDateRangeTemp.start=this.value">
+        <span class="input-icon">${SVG.calSmall}</span>
+      </div>
+      <label class="form-label">End Date</label>
+      <div class="input-with-icon" style="margin-bottom:20px">
+        <input class="form-input" placeholder="dd-mm-yyyy" value="${escHtml(catViewDateRangeTemp.end)}" oninput="catViewDateRangeTemp.end=this.value">
+        <span class="input-icon">${SVG.calSmall}</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button style="flex:1;background:#FEF2F2;color:#DC2626;border:none;border-radius:12px;padding:12px 0;font-size:13px;font-weight:700;cursor:pointer" onclick="clearCatViewDateRange()">Clear</button>
+        <button class="btn-cancel" style="flex:1" onclick="closeCatViewDateRangeModal()">Cancel</button>
+        <button class="btn-save" style="flex:1.5;border-radius:12px;padding:12px 0" onclick="applyCatViewDateRange()">Apply</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 // ─── Analysis View ────────────────────────────────────────────────────────────
@@ -1596,6 +1947,15 @@ function renderInfoView() {
         <span class="section-title" style="font-size: 18px;">How to use Cashflow</span>
       </div>
       
+      <!-- EXCEL UPLOAD INFO CARD -->
+      <div class="info-card" style="border: 1.5px solid #1A4D3A; background: #F0FDF4;">
+        <div class="info-card-title"> 📁  Bulk Excel Upload</div>
+        <div class="info-card-text">You can upload expenses in bulk using an Excel/CSV file via the <strong>Upload icon</strong> on the home screen top right.</div>
+        <div class="info-bullet"><strong>Columns Required:</strong> <span class="info-highlight">Expense Name</span>, <span class="info-highlight">Expense Amount</span>, <span class="info-highlight">Date</span>, <span class="info-highlight">Time</span>, <span class="info-highlight">Description</span>.</div>
+        <div class="info-bullet"><strong>Quick Defaults:</strong> Type <span class="info-highlight">default</span> in the Date or Time columns to automatically use today's date or current time!</div>
+        <div class="info-bullet"><strong>Empty Descriptions:</strong> You can leave the description cell completely blank if you don't need it.</div>
+      </div>
+
       <div class="info-card">
         <div class="info-card-title"> 🎙️  Voice Assistant (Magic feature)</div>
         <div class="info-card-text">Tap the <strong>Speak</strong> button to control the app hands-free:</div>
@@ -1647,9 +2007,7 @@ function renderInfoView() {
         <div class="info-card-title" style="justify-content: center; font-family: 'Sora', sans-serif; font-size: 16px; color: #1A2E25; margin-bottom: 4px;"> ✨  Meet the Creators</div>
         <div style="font-size: 12px; color: #A0AFA8; text-align: center; margin-bottom: 16px; font-weight: 500;">Built with AI assistance by Varun</div>
         
-        <!-- Row 1: Claude + Gemini logos, Row 2: Insta centered between them -->
         <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
-          <!-- Logo row -->
           <div style="display: flex; justify-content: center; align-items: flex-start; gap: 32px;"> 
             <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
               <div style="width: 155px; height: 65px; border-radius: 22px; background: #F0F7FF; border: 0.5px solid #E8E6DF; display: flex; align-items: center; justify-content: center; overflow: hidden;">
@@ -1664,7 +2022,6 @@ function renderInfoView() {
             </div>
           </div>
           
-          <!-- Insta row — centered in the middle of the gap between the two logos -->
           <div style="display: flex; justify-content: center;">
             <a href="https://instagram.com/viv_ace_ious" target="_blank" style="text-decoration: none; display: flex; align-items: center; gap: 10px; background: #F7F5F0; border-radius: 30px; padding: 0 24px 0 10px; height: 44px; border: 0.5px solid #E8E6DF;">
               <div style="width: 30px; height: 30px; border-radius: 9px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
@@ -1855,20 +2212,143 @@ function renderSettingsView() {
 }
 
 // ─── Category View ────────────────────────────────────────────────────────────
+function renderCategoryAnalytics(catExpenses, cat) {
+  const active = catExpenses.filter(e => !e.disabled);
+  if (!active.length) return '';
+
+  const total = active.reduce((s, e) => s + e.amount, 0);
+  const count = active.length;
+  const avg = total / count;
+  const sorted = [...active].sort((a, b) => b.amount - a.amount);
+  const highest = sorted[0];
+  const lowest = sorted[sorted.length - 1];
+
+  // Monthly trend: last 3 months
+  const now = new Date();
+  const monthly = {};
+  active.forEach(e => {
+    const d = new Date(e.date);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    monthly[key] = (monthly[key] || 0) + e.amount;
+  });
+
+  // Frequency: avg days between transactions
+  const dates = active.map(e => new Date(e.date).getTime()).sort((a,b) => a-b);
+  let avgGap = 0;
+  if (dates.length > 1) {
+    const gaps = [];
+    for (let i = 1; i < dates.length; i++) gaps.push((dates[i] - dates[i-1]) / 86400000);
+    avgGap = gaps.reduce((s,g) => s+g, 0) / gaps.length;
+  }
+
+  // This month vs last month
+  const currM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  let prevDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const prevM = `${prevDate.getFullYear()}-${String(prevDate.getMonth()+1).padStart(2,'0')}`;
+  const currMonthAmt = monthly[currM] || 0;
+  const prevMonthAmt = monthly[prevM] || 0;
+  let momText = '', momColor = '#8A8880';
+  if (prevMonthAmt > 0 && currMonthAmt > 0) {
+    const diff = ((currMonthAmt - prevMonthAmt) / prevMonthAmt * 100);
+    momText = diff > 0 ? `▲ ${Math.abs(diff).toFixed(0)}% vs last month` : `▼ ${Math.abs(diff).toFixed(0)}% vs last month`;
+    momColor = diff > 0 ? '#DC2626' : '#16A34A';
+  } else if (currMonthAmt > 0 && !prevMonthAmt) {
+    momText = 'No data last month'; momColor = '#8A8880';
+  } else if (!currMonthAmt) {
+    momText = 'No spend this month'; momColor = '#A0AFA8';
+  }
+
+  // Mini tooltip ids
+  const tooltipIdFreq = `tip-freq-${Date.now()}`;
+
+  return `
+  <!-- Analytics Panel -->
+  <div style="margin: 0 16px 12px;">
+    <div style="font-size:12px; font-weight:700; color:#A0AFA8; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:10px; padding-left:2px;">Category Insights</div>
+
+    <!-- Row 1: Key stats -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+      <div style="background:#fff; border-radius:16px; border:0.5px solid #E8E6DF; padding:14px 14px 12px;">
+        <div style="font-size:10px; font-weight:700; color:#A0AFA8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Avg per Transaction</div>
+        <div style="font-family:'Sora',sans-serif; font-size:18px; font-weight:700; color:#1A2E25; line-height:1.1;">${formatINR(avg)}</div>
+        <div style="font-size:10px; color:#7ABDA8; font-weight:600; margin-top:4px;">${count} transactions total</div>
+      </div>
+      <div style="background:#fff; border-radius:16px; border:0.5px solid #E8E6DF; padding:14px 14px 12px;">
+        <div style="font-size:10px; font-weight:700; color:#A0AFA8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">This Month</div>
+        <div style="font-family:'Sora',sans-serif; font-size:18px; font-weight:700; color:#1A2E25; line-height:1.1;">${currMonthAmt > 0 ? formatINR(currMonthAmt) : '—'}</div>
+        <div style="font-size:10px; color:${momColor}; font-weight:600; margin-top:4px;">${momText || 'No data yet'}</div>
+      </div>
+    </div>
+
+    <!-- Row 2: Highest & Lowest -->
+    <div style="background:#fff; border-radius:16px; border:0.5px solid #E8E6DF; padding:14px; margin-bottom:10px;">
+      <div style="font-size:10px; font-weight:700; color:#A0AFA8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px;">Spending Range</div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+        <div style="flex:1;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:#DC2626;flex-shrink:0;"></div>
+            <span style="font-size:11px;font-weight:700;color:#DC2626;">Highest</span>
+          </div>
+          <div style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:#1A2E25;">${formatINR(highest.amount)}</div>
+          <div style="font-size:10px;color:#8A8880;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${highest.name}</div>
+          <div style="font-size:9px;color:#C0BDB5;margin-top:1px;">${new Date(highest.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</div>
+        </div>
+        <div style="width:1px;background:#E8E6DF;align-self:stretch;"></div>
+        <div style="flex:1; text-align:right;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px; justify-content:flex-end;">
+            <div style="width:8px;height:8px;border-radius:50%;background:#16A34A;flex-shrink:0;"></div>
+            <span style="font-size:11px;font-weight:700;color:#16A34A;">Lowest</span>
+          </div>
+          <div style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:#1A2E25;">${formatINR(lowest.amount)}</div>
+          <div style="font-size:10px;color:#8A8880;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lowest.name}</div>
+          <div style="font-size:9px;color:#C0BDB5;margin-top:1px;">${new Date(lowest.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 3: Avg Frequency (full width) -->
+    <div style="background:#fff; border-radius:16px; border:0.5px solid #E8E6DF; padding:14px 14px 12px; position:relative;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+        <div style="font-size:10px; font-weight:700; color:#A0AFA8; text-transform:uppercase; letter-spacing:0.5px;">Avg Frequency</div>
+        <button onclick="event.stopPropagation();var t=document.getElementById('${tooltipIdFreq}');t.style.display=t.style.display==='none'?'block':'none';" style="background:#EAE8E0;border:none;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;flex-shrink:0;">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8A8880" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </button>
+      </div>
+      <div id="${tooltipIdFreq}" style="display:none; position:absolute; top:38px; right:8px; left:8px; background:#1A2E25; color:#fff; font-size:11px; font-weight:500; line-height:1.5; padding:10px 12px; border-radius:10px; z-index:20; box-shadow:0 4px 16px rgba(0,0,0,0.18);">
+        The average number of days between your transactions in this category. A lower number means you spend here more frequently.
+        <div style="position:absolute;top:-5px;right:14px;width:10px;height:10px;background:#1A2E25;transform:rotate(45deg);border-radius:2px;"></div>
+      </div>
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-family:'Sora',sans-serif; font-size:22px; font-weight:700; color:#1A2E25; line-height:1.1;">${avgGap > 0 ? `${avgGap.toFixed(1)} Days` : '—'}</div>
+        <div style="font-size:12px; color:#8A8880; font-weight:600;">avg between transactions</div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderCategoryView() {
   const cat = state.selectedCat;
   const cs = getCatStyle(cat);
   const sortedExpenses = [...state.expenses].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const catExpenses = applyFilters(sortedExpenses.filter(e=>(e.category||"").toLowerCase()===cat.toLowerCase()));
+  // Filter using catViewFilters — completely isolated from home page state
+  const allCatExpenses = sortedExpenses.filter(e=>(e.category||"").toLowerCase()===cat.toLowerCase());
+  const catExpenses = allCatExpenses.filter(e => {
+    const d = new Date(e.date);
+    const monthOk = catViewFilters.selMonths.length===0 || catViewFilters.selMonths.includes(d.getMonth());
+    const yearOk  = catViewFilters.selYears.length===0  || catViewFilters.selYears.includes(d.getFullYear());
+    let rangeOk = true;
+    if (catViewFilters.dateRange?.start) { const s=parseDDMMYYYY(catViewFilters.dateRange.start); if(s) rangeOk=rangeOk&&d>=s; }
+    if (catViewFilters.dateRange?.end)   { const en=parseDDMMYYYY(catViewFilters.dateRange.end);   if(en){ en.setHours(23,59,59); rangeOk=rangeOk&&d<=en; } }
+    return monthOk&&yearOk&&rangeOk;
+  });
   const catTotal = catExpenses.filter(e=>!e.disabled).reduce((s,e)=>s+e.amount,0);
   const isFS = catChartState.fullscreen;
   
-  const periodOpts = { day: "Day Wise", month: "Month Wise", year: "Year Wise" };
+  const periodOpts = { month: "Month Wise", year: "Year Wise" };
   const chartPeriodDD = `<div class="dropdown-wrap" style="margin-left: auto;">
-    <button class="dropdown-btn" style="background: transparent; border: 1px solid #D3D1C7; font-size: 10px; padding: 4px 8px; color: #5F5E5A;" onclick="toggleDropdown('chart-period-dd',event)">${periodOpts[catChartState.period]} ${SVG.chevronDown}</button>
+    <button class="dropdown-btn" style="background: transparent; border: 1px solid #D3D1C7; font-size: 10px; padding: 4px 8px; color: #5F5E5A;" onclick="toggleDropdown('chart-period-dd',event)">${periodOpts[catChartState.period] || 'Month Wise'} ${SVG.chevronDown}</button>
     <div class="dropdown-menu${openDropdown==='chart-period-dd'?' open':''}" id="chart-period-dd" style="right:0; left:auto; min-width:110px; top:calc(100% + 4px);">
       <div style="padding:4px 0">
-        <div class="dropdown-item${catChartState.period==='day'?' selected':''}" onclick="setChartPeriod('day')">Day Wise</div>
         <div class="dropdown-item${catChartState.period==='month'?' selected':''}" onclick="setChartPeriod('month')">Month Wise</div>
         <div class="dropdown-item${catChartState.period==='year'?' selected':''}" onclick="setChartPeriod('year')">Year Wise</div>
       </div>
@@ -1907,10 +2387,12 @@ function renderCategoryView() {
         ${catTotal > 0 ? `<span style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:#1A4D3A">${formatINR(catTotal)}</span>` : '<div></div>'}
       </div>
       
-      ${renderFilterRow(true)}
+      ${renderCatViewFilterRow(allCatExpenses)}
       ${chartSection}
       
-      <div style="min-height: 30px; display: flex; align-items: center; justify-content: center; margin: 10px 0;">
+      ${renderCategoryAnalytics(catExpenses, cat)}
+      
+      <div style="min-height: 20px; display: flex; align-items: center; justify-content: center; margin: 6px 0 2px;">
         ${state.toast && state.view === 'category' ? `<span class="toast-inline" style="color: ${state.toast.isError ? '#DC2626' : '#1A4D3A'};">${state.toast.text}</span>` : ''}
       </div>
       
@@ -1943,6 +2425,8 @@ function renderHomeView() {
         <div style="flex: 1;"></div>
         <img src="EEE.png" alt="Cashflow" style="height: 50px; object-fit: contain;">
         <div class="topbar-right" style="flex: 1; justify-content: flex-end;">
+          <input type="file" id="excel-upload" accept=".xlsx, .xls, .csv" style="display:none" onchange="handleExcelUpload(event)">
+          <button class="icon-btn" onclick="document.getElementById('excel-upload').click()" title="Upload Excel/CSV">${SVG.upload}</button>
           <button class="icon-btn" onclick="downloadExcel()" title="Download CSV">${SVG.dlSmall}</button>
           <button class="icon-btn" title="Info Guide" onclick="state.view='info';render()">${SVG.info}</button>
         </div>
@@ -2020,6 +2504,7 @@ function renderHomeView() {
       
       ${renderBottomNav(state.activeTab)}
       ${renderDownloadAlert()}
+      ${renderExcelErrorModal()}
     </div>
   </div>`;
 }
@@ -2040,7 +2525,18 @@ window.toggleYear = (yr) => {
   state.selYears = state.selYears.includes(yr) ? state.selYears.filter(y=>y!==yr) : [...state.selYears,yr];
   render();
 };
-window.openCategory = (cat) => { state.selectedCat=cat; state.view='category'; render(); };
+// Category-view-specific filter handlers (isolated from home page state)
+window.setCatViewMonthFilter = (arr) => { catViewFilters.selMonths=arr; openDropdown=null; render(); };
+window.toggleCatViewMonth = (idx) => {
+  catViewFilters.selMonths = catViewFilters.selMonths.includes(idx) ? catViewFilters.selMonths.filter(m=>m!==idx) : [...catViewFilters.selMonths,idx];
+  render();
+};
+window.setCatViewYearFilter = (arr) => { catViewFilters.selYears=arr; openDropdown=null; render(); };
+window.toggleCatViewYear = (yr) => {
+  catViewFilters.selYears = catViewFilters.selYears.includes(yr) ? catViewFilters.selYears.filter(y=>y!==yr) : [...catViewFilters.selYears,yr];
+  render();
+};
+window.openCategory = (cat) => { state.selectedCat=cat; state.view='category'; catViewFilters={selMonths:[],selYears:[],dateRange:null}; render(); };
 window.deleteCategory = (cat) => {
   snapshot(); state.categories=state.categories.filter(c=>c.toLowerCase()!==cat.toLowerCase());
   saveToLocal();
