@@ -973,8 +973,8 @@ function startVoice() {
       if (/^(undo|undo that|undo it|go back|un do)$/i.test(normalizedLower.trim())) { undo(); state.voiceTextLive=""; return; }
       if (/^(redo|redo that|redo it|re do)$/i.test(normalizedLower.trim())) { redo(); state.voiceTextLive=""; return; }
       if (normalizedLower.includes("delete all expenses")||normalizedLower.includes("delete all expense")) {
-        if (confirm("Delete all expenses?")) deleteAllExpenses(); state.voiceTextLive=""; return;
-      }
+  deleteAllExpenses(); state.voiceTextLive=""; return;
+}
       if (normalizedLower.includes("delete all categories")||normalizedLower.includes("delete all category")) {
         deleteAllCategories(); state.voiceTextLive=""; return;
       }
@@ -2423,7 +2423,7 @@ function renderHomeView() {
     <div class="app-wrap">
       <div class="topbar">
         <div style="flex: 1;"></div>
-        <img src="EEE.png" alt="Cashflow" style="height: 50px; object-fit: contain;">
+        <img src="EEE.png" alt="Cashflow" style="height: 50px; object-fit: contain; margin-left: -50px;">
         <div class="topbar-right" style="flex: 1; justify-content: flex-end;">
           <input type="file" id="excel-upload" accept=".xlsx, .xls, .csv" style="display:none" onchange="handleExcelUpload(event)">
           <button class="icon-btn" onclick="document.getElementById('excel-upload').click()" title="Upload Excel/CSV">${SVG.upload}</button>
