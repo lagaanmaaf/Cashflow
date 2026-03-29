@@ -348,8 +348,8 @@
   
   /* Analysis UI specific styles */
   .analysis-card { background: #fff; border-radius: 18px; border: 0.5px solid #E8E6DF; padding: 18px; margin: 0 16px 12px; }
-  .progress-track { width: 100%; height: 10px; background: #EAE8E0; border-radius: 5px; overflow: hidden; margin-top: 8px; }
-  .progress-fill { height: 100%; border-radius: 5px; transition: width 0.5s ease-out; }
+  .progress-track { width: 100%; height: 16px; background: #EAE8E0; border-radius: 8px; overflow: hidden; margin-top: 8px; position: relative; }
+  .progress-fill { height: 100%; border-radius: 8px; transition: width 0.5s ease-out; }
   .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 16px 12px; }
   .metric-card { background: #fff; border-radius: 18px; border: 0.5px solid #E8E6DF; padding: 16px; display: flex; flex-direction: column; gap: 4px; }
   .metric-title { font-size: 11px; color: #8A8880; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -1873,10 +1873,16 @@ function renderAnalysisView() {
                   </div>
                   <div style="font-size:12px; color:#8A8880; font-weight:500;">of ${formatINR(budget)} limit</div>
               </div>
-              <div style="font-size:14px; font-weight:700; color:${budgetColor}">${(currSpent/budget * 100).toFixed(1)}%</div>
+              <div style="font-size:14px; font-weight:700; color:${budgetColor}">
+                ${currSpent > budget
+                  ? `<span style="font-size:12px;font-weight:700;color:#DC2626;background:#FEF2F2;padding:3px 8px;border-radius:6px;">+${((currSpent/budget - 1)*100).toFixed(1)}% over</span>`
+                  : `${(currSpent/budget * 100).toFixed(1)}%`
+                }
+              </div>
           </div>
           <div class="progress-track">
-              <div class="progress-fill" style="width:${budgetPct}%; background:${budgetColor}"></div>
+              <div class="progress-fill" style="width:${budgetPct}%; background:${budgetColor}; display:flex; align-items:center; justify-content:flex-end; padding-right:6px;"></div>
+              <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${budgetPct>35?'#fff':'#1A4D3A'};pointer-events:none;letter-spacing:0.2px;">${formatINR(currSpent)}</div>
           </div>
       </div>
       
@@ -1960,7 +1966,7 @@ function renderInfoView() {
       </div>
       
       <!-- EXCEL UPLOAD INFO CARD -->
-      <div class="info-card">
+      <div class="info-card" style="border: 1.5px solid #1A4D3A; background: #F0FDF4;">
         <div class="info-card-title"> 📁  Bulk Excel Upload</div>
         <div class="info-card-text">You can upload expenses in bulk using an Excel/CSV file via the <strong>Upload icon</strong> on the home screen top right.</div>
         <div class="info-bullet"><strong>Columns Required:</strong> <span class="info-highlight">Expense Name</span>, <span class="info-highlight">Expense Amount</span>, <span class="info-highlight">Date</span>, <span class="info-highlight">Time</span>, <span class="info-highlight">Description</span>.</div>
@@ -2341,7 +2347,7 @@ function renderCategoryAnalytics(catExpenses, cat) {
 function renderCategoryView() {
   const cat = state.selectedCat;
   const cs = getCatStyle(cat);
-  const sortedExpenses = [...state.expenses].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const sortedExpenses = [...state.expenses].sort((a,b)=>{ const dd=new Date(b.date)-new Date(a.date); return dd!==0?dd:(b.id-a.id); });
   // Filter using catViewFilters — completely isolated from home page state
   const allCatExpenses = sortedExpenses.filter(e=>(e.category||"").toLowerCase()===cat.toLowerCase());
   const catExpenses = allCatExpenses.filter(e => {
@@ -2425,7 +2431,7 @@ function renderCategoryView() {
 
 // ─── Home View ────────────────────────────────────────────────────────────────
 function renderHomeView() {
-  const sortedExpenses = [...state.expenses].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const sortedExpenses = [...state.expenses].sort((a,b)=>{ const dd=new Date(b.date)-new Date(a.date); return dd!==0?dd:(b.id-a.id); });
   const filteredExpenses = applyFilters(sortedExpenses);
   const activeExpenses = filteredExpenses.filter(e=>!e.disabled);
   const totalAll = activeExpenses.reduce((s,e)=>s+e.amount,0);
@@ -2609,22 +2615,32 @@ window.setChartPeriod = (p) => { catChartState.period = p; openDropdown = null; 
 window.toggleChartFullscreen = () => { catChartState.fullscreen = !catChartState.fullscreen; render(); };
 
 // ─── Main render ──────────────────────────────────────────────────────────────
+let _lastView = null;
 function render() {
   const app = document.getElementById('app');
   if (!app) return;
   
+  let newView;
   if (state.activeTab==='calendar') {
-    app.innerHTML = renderCalendarView();
+    app.innerHTML = renderCalendarView(); newView='calendar';
   } else if (state.activeTab==='analysis') {
-    app.innerHTML = renderAnalysisView();
+    app.innerHTML = renderAnalysisView(); newView='analysis';
   } else if (state.activeTab==='settings') {
-    app.innerHTML = renderSettingsView();
+    app.innerHTML = renderSettingsView(); newView='settings';
   } else if (state.view==='info') {
-    app.innerHTML = renderInfoView();
+    app.innerHTML = renderInfoView(); newView='info';
   } else if (state.view==='category'&&state.selectedCat) {
-    app.innerHTML = renderCategoryView();
+    app.innerHTML = renderCategoryView(); newView='category:'+state.selectedCat;
   } else {
-    app.innerHTML = renderHomeView();
+    app.innerHTML = renderHomeView(); newView='home';
+  }
+  
+  // Reset page scroll whenever the view changes
+  if (newView !== _lastView) {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    _lastView = newView;
   }
 }
 
