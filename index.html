@@ -599,28 +599,33 @@ function guessCategory(name) {
 }
 function normalizeSpeech(raw) {
   let t = raw.toLowerCase().trim();
-  t = t.replace(/\b(zep\s*to|zapto|zip\s*to|saptu|zeptoo|zipto|zep|zap|jepto|zepo|zeto|zeppto|xepto|zepta|zepdo|septo|sep\s*to|jepdo|zeitu|zeypto|jero\s*to|zero\s*to)\b/gi, "zepto");
-  t = t.replace(/\b(swiggi|swiggy|swigy|sviggy)\b/gi, "swiggy");
-  t = t.replace(/\b(zomoto|zommato|zomatto|zomata)\b/gi, "zomato");
-  t = t.replace(/\b(blink\s*it|blinket|blink\s*kit)\b/gi, "blinkit");
-  t = t.replace(/\b(bigbasket|big\s*basket|bigbusket)\b/gi, "bigbasket");
-  t = t.replace(/\b(phonepe|phone\s*pe|fonpe|phone\s*pay)\b/gi, "phonepe");
+  // Zepto - extremely broad alias list to catch all misrecognitions
+  t = t.replace(/\b(zep\s*to|zapto|zip\s*to|saptu|zeptoo|zipto|zep\b|zap\b|jepto|zepo|zeto|zeppto|xepto|zepta|zepdo|septo|sep\s*to|jepdo|zeitu|zeypto|jero\s*to|zero\s*to|zapdo|jeptu|septu|zaptu|ziptu|zepco|zepko|zapco|saptoo|jeptoo|zeptoh|zeptou|zepto\s*app|jero|zeto\b|zapto\b|jepdo\b|zaptoo|zeptu|ceptu|xepto|xeptu|zaptoo|zedto|zepd|sepdo|sapto|zapt\b|zept\b|jept\b|septo\b|zep\b)/gi, "zepto");
+  // Swiggy
+  t = t.replace(/\b(swiggi|swigy|sviggy|swigi|swiggie|swigi\b)/gi, "swiggy");
+  // Zomato
+  t = t.replace(/\b(zomoto|zommato|zomatto|zomata|zamato|zomato\s*app)/gi, "zomato");
+  // Blinkit
+  t = t.replace(/\b(blink\s*it|blinket|blink\s*kit|blinkeet|blinkit\b)/gi, "blinkit");
+  // BigBasket
+  t = t.replace(/\b(bigbasket|big\s*basket|bigbusket)/gi, "bigbasket");
+  // PhonePe
+  t = t.replace(/\b(phone\s*pe|fonpe|phone\s*pay)/gi, "phonepe");
+  // "add category" spoken variants
   t = t.replace(/^(ed|at|had|add)\s+categor[yi]e?s?\s+/i, "add category ");
   return t;
 }
-function parseVoice(rawText) {
-  let mainPart = rawText.trim(), description = "";
-  const cm = rawText.match(/\bcomment\b(.+)/i);
+function parseVoice(normalizedText) {
+  // normalizedText is already passed through normalizeSpeech() — no need to re-normalize brands
+  let mainPart = normalizedText.trim(), description = "";
+  const cm = normalizedText.match(/\bcomment\b(.+)/i);
   if (cm) { 
       description = cm[1].trim(); 
-      mainPart = rawText.slice(0,rawText.toLowerCase().indexOf("comment")).trim(); 
+      mainPart = normalizedText.slice(0, normalizedText.toLowerCase().indexOf("comment")).trim(); 
   }
   
   let t = mainPart.toLowerCase().trim();
-  t = t.replace(/\b(zep to|zapto|zip to|saptu|zeptoo|zipto|zep|zap|jepto|zepto|zept|zepdo|jepdo|zapto|jeptu|septu|zeto|zeitu|zeypto|zaptu|ziptu|zepco|zepko|zapco|zepko|saptoo|jeptoo|zeptoh|zeptou|zepto app|zero to|jero to|jero|zero)\b/gi, "zepto");
-  t = t.replace(/\b(swigi|swiggi|swigi|swigy|swiggy)\b/gi, "swiggy");
-  t = t.replace(/\b(zomatto|zomato|zomato app|zamato|zomatto)\b/gi, "zomato");
-  t = t.replace(/\b(blinkit|blink it|blink kit|blinket|blinkeet)\b/gi, "blinkit");
+  // No brand normalization here — already done by normalizeSpeech before calling parseVoice
   const HINDI_ONES = {"ek":1,"do":2,"teen":3,"char":4,"paanch":5,"chhe":6,"saat":7,"aath":8,"nau":9,"das":10,"gyarah":11,"barah":12,"terah":13,"chaudah":14,"pandrah":15,"solah":16,"satrah":17,"atharah":18,"unnees":19,"bees":20,"tees":30,"chaalees":40,"pachaas":50,"saath":60,"sattar":70,"assi":80,"nabbe":90,"hundred":100,"thousand":1000};
   for (const [word,val] of Object.entries(HINDI_ONES)) {
       t = t.replace(new RegExp(`\\b${word}\\b`,"g"), String(val));
@@ -920,13 +925,19 @@ function startVoice() {
   r.onstart  = () => { state.listening=true; render(); };
   r.onresult = (ev) => {
     const results = ev.results[ev.results.length-1];
-    let best = results[0].transcript;
     const knownBrands = ["zepto","swiggy","zomato","amazon","flipkart","blinkit","bigbasket","phonepe"];
+    let best = results[0].transcript;
+    let bestNorm = normalizeSpeech(best);
+    let bestHasBrand = knownBrands.some(b => bestNorm.includes(b));
+    // Pick the alternative where normalization produces a known brand, preferring higher confidence
     for (let i = 1; i < results.length; i++) {
       const alt = results[i].transcript;
-      if (knownBrands.some(b => normalizeSpeech(alt).includes(b)) &&
-         !knownBrands.some(b => normalizeSpeech(best).includes(b))) {
+      const altNorm = normalizeSpeech(alt);
+      const altHasBrand = knownBrands.some(b => altNorm.includes(b));
+      if (altHasBrand && !bestHasBrand) {
         best = alt;
+        bestNorm = altNorm;
+        bestHasBrand = true;
       }
     }
     state.voiceTextLive = best;
@@ -935,7 +946,7 @@ function startVoice() {
     state.listening=false;
     const text = state.voiceTextLive;
     if (text) {
-      const lower = text.toLowerCase().trim();
+      // ALWAYS normalize first — this is the single source of truth for brand name fixing
       const normalizedText = normalizeSpeech(text);
       const normalizedLower = normalizedText.toLowerCase().trim();
       
@@ -985,7 +996,8 @@ function startVoice() {
         downloadExcel(); state.voiceTextLive=""; return;
       }
       
-      const {amount,name,description} = parseVoice(text);
+      // Pass normalized text to parseVoice — brand names are already fixed
+      const {amount,name,description} = parseVoice(normalizedText);
       if (amount&&name) {
         saveExpense({name,amount,category:guessCategory(name),date:new Date().toISOString(),description:description||"",extras:[]});
       } else {
