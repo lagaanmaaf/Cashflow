@@ -1372,6 +1372,45 @@ window.toggleModalAmPm = (val) => {
     }
 };
 
+window.handleModalDate = (el) => {
+    let cursor = el.selectionStart;
+    let prevLen = el.value.length;
+    let val = el.value.replace(/[^0-9]/g, '');
+    if (val.length > 2) val = val.substring(0, 2) + '-' + val.substring(2);
+    if (val.length > 5) val = val.substring(0, 5) + '-' + val.substring(5);
+    val = val.substring(0, 10);
+    el.value = val;
+    modalState.dateStr = val;
+    if (val.length > prevLen && (val.length === 3 || val.length === 6)) cursor++;
+    el.setSelectionRange(cursor, cursor);
+};
+window.handleNativeDate = (val) => {
+    if(!val) return;
+    const [y, m, d] = val.split('-');
+    modalState.dateStr = `${d}-${m}-${y}`;
+    renderModalOnly();
+};
+window.handleModalTime = (el) => {
+    let cursor = el.selectionStart;
+    let prevLen = el.value.length;
+    let val = el.value.replace(/[^0-9]/g, '');
+    if (val.length > 2) val = val.substring(0, 2) + ':' + val.substring(2);
+    val = val.substring(0, 5);
+    el.value = val;
+    modalState.timeStr = val;
+    if (val.length > prevLen && val.length === 3) cursor++;
+    el.setSelectionRange(cursor, cursor);
+};
+window.handleNativeTime = (val) => {
+    if(!val) return;
+    let [h, m] = val.split(':');
+    let hh = parseInt(h, 10);
+    modalState.ampm = hh >= 12 ? 'PM' : 'AM';
+    hh = hh % 12 || 12;
+    modalState.timeStr = `${String(hh).padStart(2,'0')}:${m}`;
+    renderModalOnly();
+};
+
 let modalState = null;
 function openAddModal() {
     const d = new Date();
@@ -1380,7 +1419,7 @@ function openAddModal() {
     hh = hh % 12 || 12;
     const time12 = `${String(hh).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 
-    modalState = { isEdit:false, name:"", amountRaw:"", extras:[], dateStr:todayStr(), timeStr:time12, ampm:ampm, desc:"" };
+    modalState = { isEdit:false, name:"", amountRaw:"", extras:[], dateStr:todayStr(), timeStr:time12, ampm:ampm, desc:"", errorMsg:null };
     state.showAddModal = true; render();
 }
 function openEditModal(id) {
@@ -1395,7 +1434,7 @@ function openEditModal(id) {
     modalState = {
         isEdit:true, editId:id, category:e.category, name:e.name, amountRaw:String(e.amount), extras:e.extras||[],
         dateStr:`${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`,
-        timeStr:time12, ampm:ampm, desc:e.description||""
+        timeStr:time12, ampm:ampm, desc:e.description||"", errorMsg:null
     };
     state.editTarget = id; render();
 }
@@ -1414,7 +1453,14 @@ const parsedDate = new Date(iso);
 const now = new Date();
 const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 if (parsedDate > todayEnd) {
-    showToast("Cannot add expense for a future date", true);
+    modalState.errorMsg = "Cannot add expense for a future date";
+    renderModalOnly();
+    setTimeout(() => {
+        if (modalState && modalState.errorMsg) {
+            modalState.errorMsg = null;
+            renderModalOnly();
+        }
+    }, 3000);
     return;
 }
 
@@ -1449,11 +1495,12 @@ const editIcon = `<svg width="14" height="14" fill="none" viewBox="0 0 24 24" st
 const addIcon = `<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#ffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
 return `<div class="modal-overlay center" onclick="closeModal()">
 <div class="modal-box center-box" onclick="event.stopPropagation()">
-<div class="modal-header">
+<div class="modal-header" style="position:relative;">
 <div style="display:flex;align-items:center;gap:9px">
 <div style="width:28px;height:28px;background:#1A4D3A;border-radius:8px;display:flex;align-items:center;justify-content:center">${m.isEdit?editIcon:addIcon}</div>
 <span class="modal-title">${m.isEdit?'Edit Expense':'Add Expense'}</span>
 </div>
+${m.errorMsg ? `<span style="position:absolute; left:50%; top:100%; transform:translate(-50%, 2px); color:#DC2626; font-size:11px; font-weight:700; white-space:nowrap; animation:fadeIn 0.2s;">${m.errorMsg}</span>` : ''}
 <button class="modal-close" onclick="closeModal()">×</button>
 </div>
 <label class="form-label">Expense Name</label>
@@ -1483,7 +1530,8 @@ return `<div style="margin-bottom: 8px;">
 <div>
 <label class="form-label">Date</label>
 <div class="input-with-icon">
-<input class="form-input" placeholder="DD-MM-YYYY" value="${escHtml(m.dateStr)}" oninput="modalState.dateStr=this.value">
+<input class="form-input" placeholder="DD-MM-YYYY" value="${escHtml(m.dateStr)}" oninput="handleModalDate(this)">
+<input type="date" style="position:absolute; right:0; top:0; width:36px; height:100%; opacity:0; cursor:pointer; z-index:10;" onchange="handleNativeDate(this.value)" onclick="try{this.showPicker()}catch(e){}">
 <span class="input-icon">${SVG.calSmall}</span>
 </div>
 </div>
@@ -1491,7 +1539,8 @@ return `<div style="margin-bottom: 8px;">
 <label class="form-label">Time</label>
 <div style="display:flex; gap:6px; align-items:center;">
 <div class="input-with-icon" style="flex:1;">
-<input class="form-input" placeholder="12:00" value="${escHtml(m.timeStr)}" oninput="modalState.timeStr=this.value">
+<input class="form-input" placeholder="12:00" value="${escHtml(m.timeStr)}" oninput="handleModalTime(this)">
+<input type="time" style="position:absolute; right:0; top:0; width:36px; height:100%; opacity:0; cursor:pointer; z-index:10;" onchange="handleNativeTime(this.value)" onclick="try{this.showPicker()}catch(e){}">
 <span class="input-icon" style="right:8px;">${SVG.clock}</span>
 </div>
 <div style="display:flex; background:#EAE8E0; border-radius:9px; padding:2px; height: 38px;">
