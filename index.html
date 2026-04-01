@@ -434,6 +434,8 @@ monthlyBudget: savedData.monthlyBudget || 50000,
 view: "home",
 activeTab: "home",
 selectedCat: null,
+analysisMonth: new Date().getMonth(),
+analysisYear: new Date().getFullYear(),
 searchQuery: "",
 selMonths: [new Date().getMonth()],
 selYears: [new Date().getFullYear()],
@@ -1693,8 +1695,9 @@ return `<div class="modal-overlay center" onclick="closeCatViewDateRangeModal()"
 // ─── Analysis View ────────────────────────────────────────────
 function renderAnalysisView() {
 const now = new Date();
-const currYear = now.getFullYear(), currMonth = now.getMonth(), currDay = now.getDate();
+const currYear = state.analysisYear, currMonth = state.analysisMonth;
 const daysInMonth = new Date(currYear, currMonth + 1, 0).getDate();
+const currDay = (currYear === now.getFullYear() && currMonth === now.getMonth()) ? now.getDate() : daysInMonth;
 let prevYear = currYear, prevMonth = currMonth - 1;
 if (prevMonth < 0) { prevMonth = 11; prevYear--; }
 const activeExps = state.expenses.filter(e => !e.disabled);
@@ -1720,10 +1723,36 @@ const catTotals = {};
 currMonthExps.forEach(e => { const c = e.category || 'Other'; catTotals[c] = (catTotals[c] || 0) + e.amount; });
 const sortedCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
 const topExps = [...currMonthExps].sort((a, b) => b.amount - a.amount).slice(0, 4);
+
+// Build month dropdown from months that have expenses
+const monthsWithData = [];
+const seen = new Set();
+activeExps.forEach(e => {
+  const d = new Date(e.date);
+  const key = `${d.getFullYear()}-${d.getMonth()}`;
+  if (!seen.has(key)) { seen.add(key); monthsWithData.push({ year: d.getFullYear(), month: d.getMonth() }); }
+});
+monthsWithData.sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month);
+const isMonthDDOpen = openDropdown === 'analysis-month-dd';
+const selLabel = `${MONTHS_FULL[currMonth]} ${currYear}`;
+const monthPickerDD = `<div class="dropdown-wrap">
+<button class="dropdown-btn active" style="font-size:12px;padding:5px 10px 5px 12px;" onclick="toggleDropdown('analysis-month-dd',event)">${selLabel} ${SVG.chevronDown}</button>
+<div class="dropdown-menu${isMonthDDOpen?' open':''}" id="analysis-month-dd" style="min-width:170px;max-height:240px;overflow-y:auto;">
+<div style="padding:6px 0">
+${monthsWithData.map(({year,month}) => {
+  const isSelected = year===currYear && month===currMonth;
+  return `<div class="dropdown-item${isSelected?' selected':''}" onclick="setAnalysisMonth(${month},${year})">${MONTHS_FULL[month]} ${year}</div>`;
+}).join('')}
+${monthsWithData.length===0?'<div class="dropdown-item" style="color:#A0AFA8">No data yet</div>':''}
+</div>
+</div>
+</div>`;
+
 return `<div style="font-family:'Plus Jakarta Sans',sans-serif;background:#F7F5F0;min-height:100vh;overflow-x:hidden;padding-bottom:80px">
 <div class="app-wrap">
 <div class="topbar">
-<div style="display:flex;align-items:center;gap:10px">${SVG.analysisIcon18}<span class="app-title">Analysis <span style="font-size:12px;color:#A0AFA8;font-weight:600;margin-left:6px">${MONTHS_FULL[currMonth]}</span></span></div>
+<div style="display:flex;align-items:center;gap:10px">${SVG.analysisIcon18}<span class="app-title">Analysis</span></div>
+<div style="display:flex;align-items:center;">${monthPickerDD}</div>
 </div>
 <div class="analysis-card">
 <div class="budget-header"><span class="section-title" style="padding:0">Monthly Budget</span><button class="edit-budget-btn" onclick="editBudget()">Edit Limit</button></div>
@@ -2254,7 +2283,7 @@ window.setCatViewMonthFilter = (arr) => { catViewFilters.selMonths=arr; openDrop
 window.toggleCatViewMonth = (idx) => { catViewFilters.selMonths = catViewFilters.selMonths.includes(idx) ? catViewFilters.selMonths.filter(m=>m!==idx) : [...catViewFilters.selMonths,idx]; _cache.catFiltered={}; render(); };
 window.setCatViewYearFilter = (arr) => { catViewFilters.selYears=arr; openDropdown=null; _cache.catFiltered={}; render(); };
 window.toggleCatViewYear = (yr) => { catViewFilters.selYears = catViewFilters.selYears.includes(yr) ? catViewFilters.selYears.filter(y=>y!==yr) : [...catViewFilters.selYears,yr]; _cache.catFiltered={}; render(); };
-window.openCategory = (cat) => { state.selectedCat=cat; state.view='category'; catViewFilters={selMonths:[new Date().getMonth()],selYears:[new Date().getFullYear()],dateRange:null}; vsState.catView={scrollTop:0}; render(); };
+window.openCategory = (cat) => { state.selectedCat=cat; state.view='category'; catViewFilters={selMonths:[...state.selMonths],selYears:[...state.selYears],dateRange:state.dateRange?{...state.dateRange}:null}; vsState.catView={scrollTop:0}; render(); };
 window.deleteCategory = (cat) => { snapshot(); state.categories=state.categories.filter(c=>c.toLowerCase()!==cat.toLowerCase()); invalidateCache(); saveToLocal(); showCatToast(`Deleted Category [${cat}]`, true); render(); };
 window.confirmDeleteAllCategories = () => { window.deleteAllCategories(); };
 window.navClick = (key) => {
@@ -2285,6 +2314,7 @@ calViewState.calMonth=i; calViewState.calYear=calViewState.tempYear; calViewStat
 };
 window.setChartPeriod = (p) => { catChartState.period = p; openDropdown = null; render(); };
 window.toggleChartFullscreen = () => { catChartState.fullscreen = !catChartState.fullscreen; render(); };
+window.setAnalysisMonth = (month, year) => { state.analysisMonth = month; state.analysisYear = year; openDropdown = null; render(); };
 
 // ─── Main render ──────────────────────────────────────────────
 let _lastView = null;
