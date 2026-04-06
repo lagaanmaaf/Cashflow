@@ -395,14 +395,16 @@ const OVERSCAN = 5; // extra rows above/below viewport
 // Virtual scroll state per list container
 const vsState = {
 home: { scrollTop: 0 },
-catView: { scrollTop: 0 }
+catView: { scrollTop: 0 },
+bulkDelete: { scrollTop: 0 }
 };
 
 // Memoization cache
 let _cache = {
 sorted: null, sortedStamp: 0,
 filtered: null, filteredKey: '',
-catSorted: {}, catFiltered: {}
+catSorted: {}, catFiltered: {},
+bulkFiltered: null, bulkFilteredKey: ''
 };
 
 // Pending render RAF handle
@@ -456,6 +458,12 @@ excelErrors: null,
 showExcelErrorModal: false
 };
 
+let bulkDeleteState = {
+    selMonths: [],
+    selYears: [],
+    selectedIds: new Set()
+};
+
 let catChartState = { period: 'month', fullscreen: false };
 let catViewFilters = { selMonths: [new Date().getMonth()], selYears: [new Date().getFullYear()], dateRange: null };
 let catViewDateRangeTemp = { start: "", end: "" };
@@ -472,6 +480,7 @@ _cache.sorted = null;
 _cache.filtered = null;
 _cache.catSorted = {};
 _cache.catFiltered = {};
+_cache.bulkFiltered = null;
 }
 
 function saveToLocal() {
@@ -507,6 +516,23 @@ const sorted = getSortedExpenses();
 const filtered = applyFilters(sorted);
 _cache.filtered = filtered;
 _cache.filteredKey = key;
+return filtered;
+}
+
+function getBulkFilteredExpenses() {
+const key = JSON.stringify({
+m: bulkDeleteState.selMonths, y: bulkDeleteState.selYears, stamp: _cache.sortedStamp
+});
+if (_cache.bulkFiltered && _cache.bulkFilteredKey === key) return _cache.bulkFiltered;
+const sorted = getSortedExpenses();
+const filtered = sorted.filter(e => {
+    const d = new Date(e.date);
+    const monthOk = bulkDeleteState.selMonths.length === 0 || bulkDeleteState.selMonths.includes(d.getMonth());
+    const yearOk = bulkDeleteState.selYears.length === 0 || bulkDeleteState.selYears.includes(d.getFullYear());
+    return monthOk && yearOk;
+});
+_cache.bulkFiltered = filtered;
+_cache.bulkFilteredKey = key;
 return filtered;
 }
 
@@ -583,18 +609,18 @@ return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart
 
 // Updated dateTimeToISO to handle AM/PM properly
 function dateTimeToISO(dateStr, timeStr, ampm = "AM") {
-    const [dd, mm, yyyy] = dateStr.split("-");
-    let [hhStr, minStr] = timeStr.split(":");
-    let hh = parseInt(hhStr, 10) || 0;
-    const mins = minStr || "00";
+    const [dd, mm, yyyy] = dateStr.split("-");
+    let [hhStr, minStr] = timeStr.split(":");
+    let hh = parseInt(hhStr, 10) || 0;
+    const mins = minStr || "00";
 
-    if (hh <= 12) {
-        if (ampm === "PM" && hh < 12) hh += 12;
-        if (ampm === "AM" && hh === 12) hh = 0;
-    }
+    if (hh <= 12) {
+        if (ampm === "PM" && hh < 12) hh += 12;
+        if (ampm === "AM" && hh === 12) hh = 0;
+    }
 
-    const finalHh = String(hh).padStart(2, "0");
-    return new Date(`${yyyy}-${mm}-${dd}T${finalHh}:${mins}:00`).toISOString();
+    const finalHh = String(hh).padStart(2, "0");
+    return new Date(`${yyyy}-${mm}-${dd}T${finalHh}:${mins}:00`).toISOString();
 }
 
 function parseDDMMYYYY(s) {
@@ -830,8 +856,8 @@ const parsedDate = new Date(iso);
 const todayEnd = new Date();
 todayEnd.setHours(23, 59, 59, 999);
 if (parsedDate > todayEnd) {
-    errors.push(`Row ${index + 2}: Future dates are not allowed`);
-    return;
+    errors.push(`Row ${index + 2}: Future dates are not allowed`);
+    return;
 }
 
 const amount = parseFloat(amountRaw.replace(/[^0-9.-]/g,''));
@@ -954,6 +980,9 @@ renderFn = renderExpenseRow;
 } else if (vsKey === 'catView') {
 items = getCatFiltered(state.selectedCat);
 renderFn = renderExpenseRow;
+} else if (vsKey === 'bulkDelete') {
+items = getBulkFilteredExpenses();
+renderFn = renderBulkExpenseRow;
 } else return;
 
 const total = items.length;
@@ -1124,6 +1153,48 @@ ${availableYears.map(yr=>`
 </div>`;
 }
 
+// BULK DELETE DROPDOWNS
+function renderBulkMonthDropdown(id, expenses, selected) {
+const availableMonths = [...new Set(expenses.map(e => new Date(e.date).getMonth()))].sort((a,b)=>a-b);
+const label = selected.length===0 ? "All Months" : selected.length===1 ? MONTHS_FULL[selected[0]] : `${selected.length} months`;
+const isOpen = openDropdown === id;
+return `<div class="dropdown-wrap">
+<button class="dropdown-btn${selected.length>0?' active':''}" onclick="toggleDropdown('${id}',event)">${label} ${SVG.chevronDown}</button>
+<div class="dropdown-menu${isOpen?' open':''}" id="${id}">
+<div style="padding:6px 0">
+<div class="dropdown-item${selected.length===0?' selected':''}" onclick="setBulkMonthFilter([])">
+<span class="chk-box${selected.length===0?' checked':''}">${selected.length===0?checkboxSVG():''}</span>All Months
+</div>
+${availableMonths.map(idx=>`
+<div class="dropdown-item${selected.includes(idx)?' selected':''}" onclick="toggleBulkMonth(${idx})">
+<span class="chk-box${selected.includes(idx)?' checked':''}">${selected.includes(idx)?checkboxSVG():''}</span>${MONTHS_FULL[idx]}
+</div>`).join('')}
+</div>
+</div>
+</div>`;
+}
+
+function renderBulkYearDropdown(id, expenses, selected) {
+const availableYears = [...new Set(expenses.map(e => new Date(e.date).getFullYear()))].sort((a,b)=>b-a);
+const label = selected.length===0 ? "All Years" : selected.length===1 ? String(selected[0]) : `${selected.length} years`;
+const isOpen = openDropdown === id;
+return `<div class="dropdown-wrap">
+<button class="dropdown-btn${selected.length>0?' active':''}" onclick="toggleDropdown('${id}',event)">${label} ${SVG.chevronDown}</button>
+<div class="dropdown-menu${isOpen?' open':''}" id="${id}">
+<div style="padding:6px 0">
+<div class="dropdown-item${selected.length===0?' selected':''}" onclick="setBulkYearFilter([])">
+<span class="chk-box${selected.length===0?' checked':''}">${selected.length===0?checkboxSVG():''}</span>All Years
+</div>
+${availableYears.map(yr=>`
+<div class="dropdown-item${selected.includes(yr)?' selected':''}" onclick="toggleBulkYear(${yr})">
+<span class="chk-box${selected.includes(yr)?' checked':''}">${selected.includes(yr)?checkboxSVG():''}</span>${yr}
+</div>`).join('')}
+</div>
+</div>
+</div>`;
+}
+
+
 function renderCalBtn() {
 const hasDateRange = state.dateRange && (state.dateRange.start || state.dateRange.end);
 return `<button class="cal-btn${hasDateRange?' active':''}" onclick="openDateRangeModal()" title="${hasDateRange?'Date filter active':'Filter by date range'}">${SVG.calSmall}</button>`;
@@ -1217,6 +1288,27 @@ ${cs.img ? `<img src="${cs.img}" alt="${e.category}" style="width:60%;height:60%
 ${e.description ? `<div class="exp-desc">${e.description}</div>` : ''}
 ${e.disabled ? `<div class="exp-excl">EXCLUDED</div>` : ''}
 </div>
+</div>`;
+}
+
+function renderBulkExpenseRow(e) {
+const cs = getCatStyle(e.category);
+const isSelected = bulkDeleteState.selectedIds.has(e.id);
+return `<div class="expense-row" style="cursor:pointer; transition:all 0.2s; ${isSelected ? 'border-color:#DC2626; background:#FEF2F2; opacity:1;' : ''}" onclick="toggleBulkSelect(${e.id})">
+    <div class="chk-box${isSelected?' checked':''}" style="margin-right:2px; flex-shrink:0; ${isSelected?'background:#DC2626;border-color:#DC2626':''}">${isSelected?checkboxSVG():''}</div>
+    <div class="cat-icon" style="background:${cs.bg};color:${cs.color}; width:48px; height:48px;">
+        ${cs.img ? `<img src="${cs.img}" alt="${e.category}" style="width:60%;height:60%;object-fit:contain">` : cs.icon}
+    </div>
+    <div class="exp-middle" style="height:auto;">
+        <div>
+            <div class="exp-name">${e.name}</div>
+            <div class="exp-date">${new Date(e.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>
+        </div>
+    </div>
+    <div class="exp-right">
+        <div class="exp-amount">${formatINR(e.amount)}</div>
+        ${e.description ? `<div class="exp-desc">${e.description}</div>` : ''}
+    </div>
 </div>`;
 }
 
@@ -1328,7 +1420,7 @@ return `<div class="modal-overlay center" onclick="state.showDownloadAlert=false
 
 function renderToast() {
 if (!state.toast) return '';
-if (state.view === 'category') return '';
+if (state.view === 'category' || state.view === 'bulkDelete') return '';
 const bg = state.toast.isError ? '#DC2626' : '#1A2E25';
 const noAnim = (Date.now() - state.toast.time > 100) ? 'animation: none; opacity: 1; transform: translateX(-50%) translateY(0) scale(1);' : '';
 return `<div class="toast-fixed" style="background:${bg}; ${noAnim}">${state.toast.text}</div>`;
@@ -1368,77 +1460,77 @@ updateModalDynamicUI();
 };
 
 window.toggleModalAmPm = (val) => {
-    if (modalState) {
-        modalState.ampm = val;
-        renderModalOnly();
-    }
+    if (modalState) {
+        modalState.ampm = val;
+        renderModalOnly();
+    }
 };
 
 window.handleModalDate = (el) => {
-    let cursor = el.selectionStart;
-    let prevLen = el.value.length;
-    let val = el.value.replace(/[^0-9]/g, '');
-    if (val.length > 2) val = val.substring(0, 2) + '-' + val.substring(2);
-    if (val.length > 5) val = val.substring(0, 5) + '-' + val.substring(5);
-    val = val.substring(0, 10);
-    el.value = val;
-    modalState.dateStr = val;
-    if (val.length > prevLen && (val.length === 3 || val.length === 6)) cursor++;
-    el.setSelectionRange(cursor, cursor);
+    let cursor = el.selectionStart;
+    let prevLen = el.value.length;
+    let val = el.value.replace(/[^0-9]/g, '');
+    if (val.length > 2) val = val.substring(0, 2) + '-' + val.substring(2);
+    if (val.length > 5) val = val.substring(0, 5) + '-' + val.substring(5);
+    val = val.substring(0, 10);
+    el.value = val;
+    modalState.dateStr = val;
+    if (val.length > prevLen && (val.length === 3 || val.length === 6)) cursor++;
+    el.setSelectionRange(cursor, cursor);
 };
 window.handleNativeDate = (val) => {
-    if(!val) return;
-    const [y, m, d] = val.split('-');
-    modalState.dateStr = `${d}-${m}-${y}`;
-    renderModalOnly();
+    if(!val) return;
+    const [y, m, d] = val.split('-');
+    modalState.dateStr = `${d}-${m}-${y}`;
+    renderModalOnly();
 };
 window.handleModalTime = (el) => {
-    let cursor = el.selectionStart;
-    let prevLen = el.value.length;
-    let val = el.value.replace(/[^0-9]/g, '');
-    if (val.length > 2) val = val.substring(0, 2) + ':' + val.substring(2);
-    val = val.substring(0, 5);
-    el.value = val;
-    modalState.timeStr = val;
-    if (val.length > prevLen && val.length === 3) cursor++;
-    el.setSelectionRange(cursor, cursor);
+    let cursor = el.selectionStart;
+    let prevLen = el.value.length;
+    let val = el.value.replace(/[^0-9]/g, '');
+    if (val.length > 2) val = val.substring(0, 2) + ':' + val.substring(2);
+    val = val.substring(0, 5);
+    el.value = val;
+    modalState.timeStr = val;
+    if (val.length > prevLen && val.length === 3) cursor++;
+    el.setSelectionRange(cursor, cursor);
 };
 window.handleNativeTime = (val) => {
-    if(!val) return;
-    let [h, m] = val.split(':');
-    let hh = parseInt(h, 10);
-    modalState.ampm = hh >= 12 ? 'PM' : 'AM';
-    hh = hh % 12 || 12;
-    modalState.timeStr = `${String(hh).padStart(2,'0')}:${m}`;
-    renderModalOnly();
+    if(!val) return;
+    let [h, m] = val.split(':');
+    let hh = parseInt(h, 10);
+    modalState.ampm = hh >= 12 ? 'PM' : 'AM';
+    hh = hh % 12 || 12;
+    modalState.timeStr = `${String(hh).padStart(2,'0')}:${m}`;
+    renderModalOnly();
 };
 
 let modalState = null;
 function openAddModal() {
-    const d = new Date();
-    let hh = d.getHours();
-    const ampm = hh >= 12 ? 'PM' : 'AM';
-    hh = hh % 12 || 12;
-    const time12 = `${String(hh).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+    const d = new Date();
+    let hh = d.getHours();
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    hh = hh % 12 || 12;
+    const time12 = `${String(hh).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 
-    modalState = { isEdit:false, name:"", amountRaw:"", extras:[], dateStr:todayStr(), timeStr:time12, ampm:ampm, desc:"", errorMsg:null };
-    state.showAddModal = true; render();
+    modalState = { isEdit:false, name:"", amountRaw:"", extras:[], dateStr:todayStr(), timeStr:time12, ampm:ampm, desc:"", errorMsg:null };
+    state.showAddModal = true; render();
 }
 function openEditModal(id) {
-    const e = state.expenses.find(x=>x.id===id);
-    if (!e) return;
-    const d = new Date(e.date);
-    let hh = d.getHours();
-    const ampm = hh >= 12 ? 'PM' : 'AM';
-    hh = hh % 12 || 12;
-    const time12 = `${String(hh).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+    const e = state.expenses.find(x=>x.id===id);
+    if (!e) return;
+    const d = new Date(e.date);
+    let hh = d.getHours();
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    hh = hh % 12 || 12;
+    const time12 = `${String(hh).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 
-    modalState = {
-        isEdit:true, editId:id, category:e.category, name:e.name, amountRaw:String(e.amount), extras:e.extras||[],
-        dateStr:`${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`,
-        timeStr:time12, ampm:ampm, desc:e.description||"", errorMsg:null
-    };
-    state.editTarget = id; render();
+    modalState = {
+        isEdit:true, editId:id, category:e.category, name:e.name, amountRaw:String(e.amount), extras:e.extras||[],
+        dateStr:`${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`,
+        timeStr:time12, ampm:ampm, desc:e.description||"", errorMsg:null
+    };
+    state.editTarget = id; render();
 }
 function closeModal() { state.showAddModal = false; state.editTarget = null; modalState = null; render(); }
 function saveModal() {
@@ -1455,15 +1547,15 @@ const parsedDate = new Date(iso);
 const now = new Date();
 const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 if (parsedDate > todayEnd) {
-    modalState.errorMsg = "Cannot add expense for a future date";
-    renderModalOnly();
-    setTimeout(() => {
-        if (modalState && modalState.errorMsg) {
-            modalState.errorMsg = null;
-            renderModalOnly();
-        }
-    }, 3000);
-    return;
+    modalState.errorMsg = "Cannot add expense for a future date";
+    renderModalOnly();
+    setTimeout(() => {
+        if (modalState && modalState.errorMsg) {
+            modalState.errorMsg = null;
+            renderModalOnly();
+        }
+    }, 3000);
+    return;
 }
 
 const category = guessCategory(newName);
@@ -1728,9 +1820,9 @@ const topExps = [...currMonthExps].sort((a, b) => b.amount - a.amount).slice(0, 
 const monthsWithData = [];
 const seen = new Set();
 activeExps.forEach(e => {
-  const d = new Date(e.date);
-  const key = `${d.getFullYear()}-${d.getMonth()}`;
-  if (!seen.has(key)) { seen.add(key); monthsWithData.push({ year: d.getFullYear(), month: d.getMonth() }); }
+  const d = new Date(e.date);
+  const key = `${d.getFullYear()}-${d.getMonth()}`;
+  if (!seen.has(key)) { seen.add(key); monthsWithData.push({ year: d.getFullYear(), month: d.getMonth() }); }
 });
 monthsWithData.sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month);
 const isMonthDDOpen = openDropdown === 'analysis-month-dd';
@@ -1740,8 +1832,8 @@ const monthPickerDD = `<div class="dropdown-wrap">
 <div class="dropdown-menu${isMonthDDOpen?' open':''}" id="analysis-month-dd" style="min-width:170px;max-height:240px;overflow-y:auto;">
 <div style="padding:6px 0">
 ${monthsWithData.map(({year,month}) => {
-  const isSelected = year===currYear && month===currMonth;
-  return `<div class="dropdown-item${isSelected?' selected':''}" onclick="setAnalysisMonth(${month},${year})">${MONTHS_FULL[month]} ${year}</div>`;
+  const isSelected = year===currYear && month===currMonth;
+  return `<div class="dropdown-item${isSelected?' selected':''}" onclick="setAnalysisMonth(${month},${year})">${MONTHS_FULL[month]} ${year}</div>`;
 }).join('')}
 ${monthsWithData.length===0?'<div class="dropdown-item" style="color:#A0AFA8">No data yet</div>':''}
 </div>
@@ -1851,6 +1943,13 @@ return `<div style="font-family:'Plus Jakarta Sans',sans-serif;background:#F7F5F
 <div class="info-bullet"><strong>Heat Map:</strong> The Calendar tab highlights days with higher spending in dark green.</div>
 <div class="info-bullet"><strong>Deep Search:</strong> Use the dropdowns (Month/Year) or the Calendar button on the Home screen to filter by a specific Date Range.</div>
 </div>
+<div class="info-card">
+<div class="info-card-title">🗑️ Bulk Delete</div>
+<div class="info-card-text">Easily clear out multiple records at once:</div>
+<div class="info-bullet"><strong>How to access:</strong> Go to Settings and tap <span class="info-highlight">Open Bulk Delete</span>.</div>
+<div class="info-bullet"><strong>Filter & Select:</strong> Use the month and year dropdowns to filter your view, then check the boxes or use <strong>Select All</strong> to remove them.</div>
+</div>
+
 <div class="info-card">
 <div class="info-card-title">⚙️ Manage & Organize</div>
 <div class="info-bullet"><strong>Exclude Expenses:</strong> Tap the eye icon on any expense to hide its amount from your total sum without deleting it.</div>
@@ -2019,12 +2118,112 @@ return `<div style="font-family:'Plus Jakarta Sans',sans-serif;background:#F7F5F
 <button class="toggle-btn" style="background:${!state.showExcludeAlert?'#DC2626':'#EAE8E0'};color:${!state.showExcludeAlert?'#fff':'#3D5247'};box-shadow:${!state.showExcludeAlert?'0 2px 8px rgba(220,38,38,0.18)':'none'}" onclick="state.showExcludeAlert=false;render()"> ✕ Don't Show</button>
 </div>
 </div>
+<div class="settings-item" style="border-top: 0.5px solid #E8E6DF;">
+<div class="settings-name">Bulk Delete Expenses</div>
+<div class="settings-desc">Select and delete multiple expenses by month and year.</div>
+<button class="add-cat-btn" style="background:#FEF2F2; color:#DC2626; box-shadow:none; margin-top:8px;" onclick="openBulkDelete()">
+<span style="margin-right:4px;">${SVG.trash}</span> Open Bulk Delete
+</button>
+</div>
 </div>
 ${renderBottomNav(state.activeTab)}
 ${renderDownloadAlert()}
 </div>
 </div>`;
 }
+
+// ─── Bulk Delete View ──────────────────────────────────────────
+function renderBulkDeleteView() {
+const bulkFilteredExpenses = getBulkFilteredExpenses();
+const visibleIds = bulkFilteredExpenses.map(e => e.id);
+const allSelected = visibleIds.length > 0 && visibleIds.every(id => bulkDeleteState.selectedIds.has(id));
+
+const virtualContent = buildVirtualList('bulk-list', bulkFilteredExpenses, renderBulkExpenseRow, vsState.bulkDelete?.scrollTop);
+
+return `<div style="font-family:'Plus Jakarta Sans',sans-serif;background:#F7F5F0;min-height:100vh;overflow-x:hidden;padding-bottom:px">
+<div class="app-wrap">
+<div class="cat-view-topbar" style="padding-bottom:12px;">
+<button class="back-btn" onclick="state.view='settings';render()">${SVG.back}</button>
+<div class="cat-view-center">
+<span style="font-family:'Sora',sans-serif;font-size:17px;font-weight:700;color:#1A2E25">Bulk Delete</span>
+</div>
+<div style="width:34px"></div>
+</div>
+
+<div class="filter-row" style="padding-bottom: 10px; border-bottom: 0.5px solid #E8E6DF; margin-bottom: 8px;">
+${renderBulkMonthDropdown('bulk-month-dd', state.expenses, bulkDeleteState.selMonths)}
+${renderBulkYearDropdown('bulk-year-dd', state.expenses, bulkDeleteState.selYears)}
+</div>
+
+<div class="section-head" style="padding-top: 4px; padding-bottom: 12px;">
+<div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="toggleBulkSelectAll()">
+<div class="chk-box${allSelected?' checked':''}" style="${allSelected?'background:#DC2626;border-color:#DC2626':''}">${allSelected?checkboxSVG():''}</div>
+<span class="section-title">Select All</span>
+</div>
+<span class="section-count">${bulkDeleteState.selectedIds.size} selected</span>
+</div>
+
+<div class="expenses-list-container" id="bulk-list">
+${bulkFilteredExpenses.length === 0 ? `<div class="empty-msg">No expenses found for this filter</div>` : virtualContent}
+</div>
+
+<div style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #E8E6DF;padding:16px 18px env(safe-area-inset-bottom, 16px);display:flex;z-index:20;">
+<div style="width:100%;max-width:480px;margin:0 auto;">
+<button class="add-cat-btn" style="width:100%; background:${bulkDeleteState.selectedIds.size>0?'#DC2626':'#EAE8E0'}; color:${bulkDeleteState.selectedIds.size>0?'#fff':'#A0AFA8'}; box-shadow:none; cursor:${bulkDeleteState.selectedIds.size>0?'pointer':'default'}; height: 48px; font-size: 14px;" ${bulkDeleteState.selectedIds.size===0?'disabled':''} onclick="executeBulkDelete()">
+<span style="margin-right:6px;">${SVG.trash}</span> Delete ${bulkDeleteState.selectedIds.size} Expenses
+</button>
+</div>
+</div>
+
+</div>
+</div>`;
+}
+
+window.openBulkDelete = () => {
+state.view = 'bulkDelete';
+bulkDeleteState = { selMonths: [], selYears: [], selectedIds: new Set() };
+vsState.bulkDelete = { scrollTop: 0 };
+render();
+};
+
+window.setBulkMonthFilter = (arr) => { bulkDeleteState.selMonths = arr; openDropdown = null; _cache.bulkFiltered = null; render(); };
+window.toggleBulkMonth = (idx) => { bulkDeleteState.selMonths = bulkDeleteState.selMonths.includes(idx) ? bulkDeleteState.selMonths.filter(m=>m!==idx) : [...bulkDeleteState.selMonths,idx]; _cache.bulkFiltered = null; render(); };
+window.setBulkYearFilter = (arr) => { bulkDeleteState.selYears = arr; openDropdown = null; _cache.bulkFiltered = null; render(); };
+window.toggleBulkYear = (yr) => { bulkDeleteState.selYears = bulkDeleteState.selYears.includes(yr) ? bulkDeleteState.selYears.filter(y=>y!==yr) : [...bulkDeleteState.selYears,yr]; _cache.bulkFiltered = null; render(); };
+
+window.toggleBulkSelect = (id) => {
+if (bulkDeleteState.selectedIds.has(id)) bulkDeleteState.selectedIds.delete(id);
+else bulkDeleteState.selectedIds.add(id);
+render();
+};
+
+window.toggleBulkSelectAll = () => {
+const visibleExps = getBulkFilteredExpenses();
+if (visibleExps.length === 0) return;
+const visibleIds = visibleExps.map(e => e.id);
+const allSelected = visibleIds.every(id => bulkDeleteState.selectedIds.has(id));
+
+if (allSelected) {
+    visibleIds.forEach(id => bulkDeleteState.selectedIds.delete(id));
+} else {
+    visibleIds.forEach(id => bulkDeleteState.selectedIds.add(id));
+}
+render();
+};
+
+window.executeBulkDelete = () => {
+if (bulkDeleteState.selectedIds.size === 0) return;
+if (!confirm(`Are you sure you want to delete ${bulkDeleteState.selectedIds.size} expenses? This cannot be undone.`)) return;
+
+snapshot();
+state.expenses = state.expenses.filter(e => !bulkDeleteState.selectedIds.has(e.id));
+bulkDeleteState.selectedIds.clear();
+invalidateCache();
+saveToLocal();
+showToast(`Successfully deleted expenses`);
+render();
+};
+
 
 // ─── Category Analytics ────────────────────────────────────────
 function renderCategoryAnalytics(catExpenses, cat) {
@@ -2324,7 +2523,8 @@ if (!app) return;
 let newView;
 if (state.activeTab==='calendar') { app.innerHTML = renderCalendarView(); newView='calendar'; }
 else if (state.activeTab==='analysis') { app.innerHTML = renderAnalysisView(); newView='analysis'; }
-else if (state.activeTab==='settings') { app.innerHTML = renderSettingsView(); newView='settings'; }
+else if (state.activeTab==='settings' && state.view !== 'bulkDelete') { app.innerHTML = renderSettingsView(); newView='settings'; }
+else if (state.view==='bulkDelete') { app.innerHTML = renderBulkDeleteView(); newView='bulkDelete'; }
 else if (state.view==='info') { app.innerHTML = renderInfoView(); newView='info'; }
 else if (state.view==='category'&&state.selectedCat) { app.innerHTML = renderCategoryView(); newView='category:'+state.selectedCat; }
 else { app.innerHTML = renderHomeView(); newView='home'; }
@@ -2339,6 +2539,7 @@ _lastView = newView;
 // Attach virtual scroll listeners after render
 if (newView === 'home') attachVirtualScroll('home-list', 'home');
 else if (newView && newView.startsWith('category:')) attachVirtualScroll('catview-list', 'catView');
+else if (newView === 'bulkDelete') attachVirtualScroll('bulk-list', 'bulkDelete');
 }
 
 document.addEventListener('click', (e) => { if (openDropdown) { openDropdown = null; render(); } });
