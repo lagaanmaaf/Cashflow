@@ -1887,7 +1887,7 @@ return `<div><div style="display:flex; justify-content:space-between; align-item
 </div>
 </div>
 <div class="section-head"><span class="section-title">Heavy Hitters</span><span class="section-count">Top ${topExps.length}</span></div>
-<div class="expenses-list-container" style="max-height:none; margin-bottom: 20px;">
+<div class="expenses-list-container" style="max-height:none; margin-bottom: 0px;">
 ${topExps.length === 0 ? '<div class="empty-msg">No data for this month</div>' : ''}
 ${topExps.map(e => renderExpenseRow(e)).join('')}
 </div>
