@@ -697,7 +697,8 @@ return t;
 }
 function parseVoice(normalizedText) {
 let mainPart = normalizedText.trim(), description = "";
-const cm = normalizedText.match(/\bcomment\b(.+)/i);
+// FIX 1: Changed (.+) to (.*) so it catches the word even if the comment itself is blank
+const cm = normalizedText.match(/\bcomment\b(.*)/i);
 if (cm) { description = cm[1].trim(); mainPart = normalizedText.slice(0, normalizedText.toLowerCase().indexOf("comment")).trim(); }
 let t = mainPart.toLowerCase().trim();
 const HINDI_ONES = {"ek":1,"do":2,"teen":3,"char":4,"paanch":5,"chhe":6,"saat":7,"aath":8,"nau":9,"das":10,"gyarah":11,"barah":12,"terah":13,"chaudah":14,"pandrah":15,"solah":16,"satrah":17,"atharah":18,"unnees":19,"bees":20,"tees":30,"chaalees":40,"pachaas":50,"saath":60,"sattar":70,"assi":80,"nabbe":90,"hundred":100,"thousand":1000};
@@ -707,7 +708,9 @@ t = t.replace(/([\d.,]+)\s*(lakh|lac|lacs|lakhs)\b/g, (_, n) => String(parseFloa
 t = t.replace(/([\d.,]+)\s*(crore|cr|crores)\b/g, (_, n) => String(parseFloat(n.replace(/,/g,"")) * 10000000));
 t = t.replace(/([\d.,]+)\s*(so|sau|hundred)\b/g, (_, n) => String(parseFloat(n.replace(/,/g,"")) * 100));
 t = t.replace(/([\d.,]+)\s*(million|m)\b/g, (_, n) => String(parseFloat(n.replace(/,/g,"")) * 1000000));
-const FILLERS = ["add","please","karo","kar","mera","meri","ka","ki","ke","the","a","an","for","rs","rupees","rupay","rupaye","inr","₹","wala","wali"];
+
+// FIX 2: Added "comment" to the FILLERS list so it never becomes part of the Expense Name
+const FILLERS = ["add","please","karo","kar","mera","meri","ka","ki","ke","the","a","an","for","rs","rupees","rupay","rupaye","inr","₹","wala","wali", "comment"];
 let words = t.split(/\s+/);
 let currentTotal = 0, maxTotal = 0, lastNum = Infinity, nameWords = [];
 for (let i = 0; i < words.length; i++) {
