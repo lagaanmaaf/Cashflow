@@ -766,13 +766,25 @@ render();
 
 function saveExpense({ name, amount, category, date, description, extras }, editId) {
 snapshot();
+
+// Capitalize the first letter of the description/comment if it exists
+if (description) {
+description = description.charAt(0).toUpperCase() + description.slice(1);
+}
+
 if (editId) {
 state.expenses = state.expenses.map(e => e.id===editId ? {...e,name,amount,category,date,description,extras:extras||[]} : e);
 showToast(`Expense [${name}] Updated`);
 } else {
 const cat = category || guessCategory(name);
 state.expenses = [{ id: Date.now(), name, amount, date: date||new Date().toISOString(), category: cat, disabled: false, description: description||"", extras: extras||[] }, ...state.expenses];
+
+// Check if there is a comment to customize the toast message
+if (description) {
+showToast(`Added [${name}] for ${formatINR(amount)} with Comment: ${description}`);
+} else {
 showToast(`Added [${name}] for ${formatINR(amount)}`);
+}
 }
 invalidateCache(); saveToLocal(); render();
 }
