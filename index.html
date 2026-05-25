@@ -583,7 +583,7 @@ if (n.includes("blink")) return { img: "blink.png", bg: "#FFFBE6", color: "#F59E
 if (n.includes("swiggy")) return { img: "swiggy.png", bg: "#FFEDD5", color: "#EA580C" };
 if (n.includes("zomato")) return { img: "zomato.png", bg: "#FCE7F3", color: "#E11D48" };
 if (n.includes("electric")) return { img: "electricity.png", bg: "#E0F2FE", color: "#0284C7" };
-if (n.includes("food")) return { img: "food.png", bg: "#EDE9FE", color: "#8B5CF6" };
+if (n === "food") return { img: "food.png", bg: "#EDE9FE", color: "#8B5CF6" };
 if (n.includes("alcohol") || n.includes("liquor") || n.includes("wine") || n.includes("beer")) return { img: "alcohol.png", bg: "#F3E8FF", color: "#9333EA" };
 if (n.includes("milk")) return { img: "milk.png", bg: "#F3F4F6", color: "#475569" };
 if (n.includes("petrol") || n.includes("fuel") || n.includes("diesel") || n.includes("cng")) return { img: "petrol.png", bg: "#FEF2F2", color: "#DC2626" };
@@ -680,7 +680,7 @@ if (n.includes("zomato")) return "Zomato";
 if (n.includes("pizza") || n.includes("dominos")) return "Pizza";
 if (n.includes("coffee")) return "Coffee";
 if (n.includes("drink") || n.includes("pepsi") || n.includes("thumbsup") || n.includes("coke") || n.includes("coca")) return "Drinks";
-if (n.includes("food") || n.includes("restaurant") || n.includes("cafe") || n.includes("lunch") || n.includes("dinner")) return "Food";
+if (n === "food") return "Food";
 if (n.includes("electricity") || n.includes("electric")) return "Electricity";
 if (n.includes("internet") || n.includes("wifi") || n.includes("wi-fi")) return "Internet";
 if (n.includes("gas") || n.includes("cyclinder") || n.includes("lpg") || n.includes("cylinder")) return "Gas";
