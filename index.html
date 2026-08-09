@@ -701,14 +701,31 @@ return "Other";
 }
 function normalizeSpeech(raw) {
 let t = raw.toLowerCase().trim();
-t = t.replace(/\b(zep\s*to|zapto|zip\s*to|saptu|zeptoo|zipto|zep\b|zap\b|jepto|zepo|zeto|zeppto|xepto|zepta|zepdo|septo|sep\s*to|jepdo|zeitu|zeypto|jero\s*to|zero\s*to|zapdo|jeptu|septu|zaptu|ziptu|zepco|zepko|zapco|saptoo|jeptoo|zeptoh|zeptou|zepto\s*app|jero|zeto\b|zapto\b|jepdo\b|zaptoo|zeptu|ceptu|xepto|xeptu|zaptoo|zedto|zepd|sepdo|sapto|zapt\b|zept\b|jept\b|septo\b|zep\b)/gi, "zepto");
-t = t.replace(/\b(swiggi|swigy|sviggy|swigi|swiggie|swigi\b)/gi, "swiggy");
-t = t.replace(/\b(zomoto|zommato|zomatto|zomata|zamato|zomato\s*app)/gi, "zomato");
-t = t.replace(/\b(blink\s*it|blinket|blink\s*kit|blinkeet|blinkit\b)/gi, "blinkit");
-t = t.replace(/\b(bigbasket|big\s*basket|bigbusket)/gi, "bigbasket");
-t = t.replace(/\b(phone\s*pe|fonpe|phone\s*pay)/gi, "phonepe");
+// Never rewrite an expense name. A speech recognizer can offer alternatives,
+// but "Laptop" and "Zepto" (or "Try" and "Chai") are different valid names.
+// Rewriting one into the other makes genuine transactions impossible to record.
 t = t.replace(/^(ed|at|had|add)\s+categor[yi]e?s?\s+/i, "add category ");
 return t;
+}
+
+function scoreVoiceAlternative(transcript) {
+  const normalized = String(transcript || "").toLowerCase().trim();
+  const keywords = ["zepto", "chai", "swiggy", "zomato", "blinkit", "bigbasket", "phonepe", "amazon", "flipkart"];
+  const keywordHits = keywords.reduce((score, word) => score + (new RegExp(`\\b${word}\\b`, "i").test(normalized) ? 1 : 0), 0);
+  const hasAmount = /(?:^|\s)\d+(?:[,.]\d+)?(?:\s|$)/.test(normalized);
+  // Prefer a complete expense command, then a recognisable merchant/expense name.
+  return (hasAmount ? 10 : 0) + keywordHits * 4;
+}
+
+function chooseVoiceAlternative(results) {
+  let best = results[0]?.transcript || "";
+  let bestScore = scoreVoiceAlternative(best);
+  for (let i = 1; i < results.length; i++) {
+    const alternative = results[i].transcript || "";
+    const score = scoreVoiceAlternative(alternative);
+    if (score > bestScore) { best = alternative; bestScore = score; }
+  }
+  return best;
 }
 function parseVoice(normalizedText) {
 let mainPart = normalizedText.trim(), explicitDescription = "";
@@ -1046,23 +1063,19 @@ el.innerHTML = `<div style="height:${topPad}px;flex-shrink:0;"></div>${rows.join
 function startVoice() {
 const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
 if (!SR) { showToast("Voice not supported in this browser", true); return; }
+// Avoid an InvalidStateError if the button is tapped again while a previous
+// recognition session is still shutting down.
+if (recognition) { try { recognition.abort(); } catch (_) {} recognition = null; }
 const r = new SR();
 r.lang = "en-IN"; r.interimResults = true; r.maxAlternatives = 5; r.continuous = false;
 recognition = r;
 r.onstart = () => { state.listening=true; render(); };
 r.onresult = (ev) => {
-const results = ev.results[ev.results.length-1];
-const knownBrands = ["zepto","swiggy","zomato","amazon","flipkart","blinkit","bigbasket","phonepe"];
-let best = results[0].transcript;
-let bestNorm = normalizeSpeech(best);
-let bestHasBrand = knownBrands.some(b => bestNorm.includes(b));
-for (let i = 1; i < results.length; i++) {
-const alt = results[i].transcript;
-const altNorm = normalizeSpeech(alt);
-const altHasBrand = knownBrands.some(b => altNorm.includes(b));
-if (altHasBrand && !bestHasBrand) { best = alt; bestNorm = altNorm; bestHasBrand = true; }
+// Do not save an interim transcript: it can be a lower-quality partial guess
+// that arrives after the final result and used to overwrite it.
+for (let i = ev.resultIndex; i < ev.results.length; i++) {
+  if (ev.results[i].isFinal) state.voiceTextLive = chooseVoiceAlternative(ev.results[i]);
 }
-state.voiceTextLive = best;
 };
 r.onend = () => {
 state.listening=false;
@@ -1098,13 +1111,17 @@ state.voiceTextLive="";
 render();
 };
 r.onerror = (ev) => {
-state.listening=false; state.voiceTextLive="";
-if (ev.error==="not-allowed") showToast("Microphone permission denied", true);
+state.listening=false; state.voiceTextLive=""; recognition=null;
+if (ev.error==="not-allowed" || ev.error==="service-not-allowed") showToast("Microphone blocked — allow it in browser site settings", true);
+else if (ev.error==="audio-capture") showToast("No microphone found — connect or enable one", true);
+else if (ev.error==="network") showToast("Speech recognition needs an internet connection", true);
+else if (ev.error==="language-not-supported") showToast("English (India) speech recognition is unavailable", true);
 else if (ev.error==="no-speech") showToast("No speech detected – try again", true);
-else showToast("Mic error – check permissions", true);
+else if (ev.error!=="aborted") showToast(`Speech recognition error: ${ev.error || "unknown"}`, true);
 render();
 };
-r.start();
+try { r.start(); }
+catch (_) { state.listening=false; recognition=null; showToast("Could not start mic — close other apps using it and try again", true); }
 }
 function stopVoice() { recognition?.stop(); }
 
