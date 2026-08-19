@@ -701,16 +701,21 @@ return "Other";
 }
 function normalizeSpeech(raw) {
 let t = raw.toLowerCase().trim();
-// Never rewrite an expense name. A speech recognizer can offer alternatives,
-// but "Laptop" and "Zepto" (or "Try" and "Chai") are different valid names.
-// Rewriting one into the other makes genuine transactions impossible to record.
+// Apply corrections only to the voice transcript. Manual expense names are never
+// changed, so a person can still intentionally enter a similarly named item.
+// These are common Indian-English recognition variants for the named merchants.
+t = t
+  .replace(/\b(?:bacdo|bakto|bacto)\b/g, "bacto")
+  .replace(/\b(?:chay|chhai)\b/g, "chai")
+  .replace(/\btry(?=\s+(?:\d|one\b|two\b|three\b|four\b|five\b|six\b|seven\b|eight\b|nine\b|ten\b))/g, "chai")
+  .replace(/\b(?:zapto|zeptoe|zepto)\b/g, "zepto");
 t = t.replace(/^(ed|at|had|add)\s+categor[yi]e?s?\s+/i, "add category ");
 return t;
 }
 
 function scoreVoiceAlternative(transcript) {
-  const normalized = String(transcript || "").toLowerCase().trim();
-  const keywords = ["zepto", "chai", "swiggy", "zomato", "blinkit", "bigbasket", "phonepe", "amazon", "flipkart"];
+  const normalized = normalizeSpeech(String(transcript || ""));
+  const keywords = ["bacto", "zepto", "chai", "swiggy", "zomato", "blinkit", "bigbasket", "phonepe", "amazon", "flipkart"];
   const keywordHits = keywords.reduce((score, word) => score + (new RegExp(`\\b${word}\\b`, "i").test(normalized) ? 1 : 0), 0);
   const hasAmount = /(?:^|\s)\d+(?:[,.]\d+)?(?:\s|$)/.test(normalized);
   // Prefer a complete expense command, then a recognisable merchant/expense name.
@@ -2500,7 +2505,7 @@ ${SVG.search}
 ${renderFilterRow()}
 <div class="section-head">
 <span class="section-title">Recent Expenses</span>
-${filteredExpenses.length > 0 ? `<span class="section-count">${filteredExpenses.length} total</span>` : ''}
+<span class="section-count" id="home-expense-count" style="${filteredExpenses.length > 0 ? '' : 'display:none'}">${filteredExpenses.length} total</span>
 </div>
 <div class="expenses-list-container" id="home-list">
 ${filteredExpenses.length===0?`<div class="empty-msg">No expenses found</div>`:virtualContent}
@@ -2548,13 +2553,29 @@ ${renderExcelErrorModal()}
 }
 
 // Debounced search input — avoids re-render on every keystroke
+function updateHomeSearchResults() {
+const list = document.getElementById('home-list');
+if (!list || state.view !== 'home' || state.activeTab !== 'home') { render(); return; }
+const filteredExpenses = getFilteredExpenses();
+vsState.home = { scrollTop: 0 };
+list.scrollTop = 0;
+list.innerHTML = filteredExpenses.length === 0
+  ? '<div class="empty-msg">No expenses found</div>'
+  : buildVirtualList('home-list', filteredExpenses, renderExpenseRow, 0);
+const count = document.getElementById('home-expense-count');
+if (count) {
+  count.textContent = `${filteredExpenses.length} total`;
+  count.style.display = filteredExpenses.length > 0 ? '' : 'none';
+}
+}
+
 window.handleSearchInput = (val) => {
 if (_searchDebounce) clearTimeout(_searchDebounce);
 _searchDebounce = setTimeout(() => {
 state.searchQuery = val;
 _cache.filtered = null;
-render();
-}, 120); // 120ms debounce feels instant but skips mid-typing renders
+updateHomeSearchResults();
+}, 120);
 };
 
 // ─── Event handlers ───────────────────────────────────────────
@@ -2627,7 +2648,10 @@ else if (newView && newView.startsWith('category:')) attachVirtualScroll('catvie
 else if (newView === 'bulkDelete') attachVirtualScroll('bulk-list', 'bulkDelete');
 }
 
-document.addEventListener('click', (e) => { if (openDropdown) { openDropdown = null; render(); } });
+if (!window.__cashflowDropdownClickHandler) {
+window.__cashflowDropdownClickHandler = () => { if (openDropdown) { openDropdown = null; render(); } };
+document.addEventListener('click', window.__cashflowDropdownClickHandler);
+}
 
 render();
 </script>
