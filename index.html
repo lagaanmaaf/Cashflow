@@ -284,6 +284,142 @@ padding: 14px; font-size: 14px; font-weight: 700; cursor: pointer;
 .btn-save.disabled { background: #B4B2A9; cursor: default; }
 .extra-remove { background: #FEF2F2; border: none; border-radius: 11px; padding: 0 13px; color: #DC2626; cursor: pointer; font-weight: 700; font-size: 18px; }
 
+/* Add/edit expense sheet */
+.modal-overlay.expense-overlay { align-items: flex-end; justify-content: center; padding: 0; background: rgba(15,35,27,.48); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
+.expense-sheet {
+  width: 100%; max-width: none; max-height: 100vh; max-height: 100dvh; height: fit-content;
+  overflow-y: auto; overscroll-behavior: contain; border-radius: 26px 26px 0 0;
+  padding: 10px 24px calc(16px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -18px 60px rgba(10,30,22,.2); animation: expenseSheetIn .38s cubic-bezier(.16,.84,.32,1) both;
+}
+.expense-sheet-grab { width: 40px; height: 4px; margin: 0 auto 10px; border-radius: 4px; background: #DDD9D0; }
+.expense-sheet .modal-header { margin-bottom: 12px; }
+.expense-sheet .modal-title { font-size: 18px; }
+.expense-sheet .modal-close { width: 34px; height: 34px; font-size: 20px; }
+.expense-sheet > .form-label { margin: 0 0 5px; }
+.expense-sheet > .form-input { margin-bottom: 10px !important; }
+.expense-sheet .amount-row {
+  align-items: center; gap: 10px; padding: 12px 16px; margin: 0 0 3px;
+  border-radius: 18px; background: radial-gradient(ellipse at 92% 0%, rgba(197,242,109,.18), transparent 38%), linear-gradient(120deg,#123c2c,#1b5940);
+  box-shadow: 0 10px 24px rgba(16,56,40,.16);
+}
+.expense-sheet .currency-badge { background: transparent; color: #AEDED0; padding: 0; font: 700 26px 'Sora', sans-serif; }
+.expense-sheet .currency-badge span { display: none; }
+.expense-sheet .amount-row .form-input { min-width: 0; padding: 0 0 5px; border: 0; border-bottom: 1px solid rgba(255,255,255,.25); border-radius: 0; background: transparent; color: #fff; font: 700 34px 'Sora', sans-serif; }
+.expense-sheet .amount-row .form-input::placeholder { color: rgba(255,255,255,.4); }
+.expense-sheet #modal-main-preview, .expense-sheet [id^="modal-ex-preview-"] { color: #D8F6A0 !important; }
+.expense-sheet .add-extra-btn { padding: 7px 0; margin: 2px 0 9px; border: 0; color: #1A4D3A; }
+.expense-sheet .date-time-grid { margin-bottom: 10px; }
+.expense-sheet .date-time-grid .form-label { margin-bottom: 4px; }
+.expense-sheet .form-input { padding: 9px 11px; }
+.expense-sheet textarea.form-input { min-height: 52px; height: 52px; resize: none; margin-bottom: 10px !important; }
+.expense-sheet .modal-btn-row { gap: 10px; }
+.expense-sheet .btn-cancel, .expense-sheet .btn-save { padding: 13px; border-radius: 13px; }
+@keyframes expenseSheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (max-height: 760px) {
+  .expense-sheet { padding-top: 7px; padding-bottom: calc(9px + env(safe-area-inset-bottom, 0px)); }
+  .expense-sheet-grab { margin-bottom: 6px; }
+  .expense-sheet .modal-header { margin-bottom: 7px; }
+  .expense-sheet > .form-input { margin-bottom: 7px !important; }
+  .expense-sheet .amount-row { padding: 8px 13px; border-radius: 15px; }
+  .expense-sheet .currency-badge { font-size: 23px; }
+  .expense-sheet .amount-row .form-input { font-size: 30px; }
+  .expense-sheet .add-extra-btn { padding: 4px 0; margin-bottom: 6px; }
+  .expense-sheet .date-time-grid { margin-bottom: 7px; }
+  .expense-sheet .form-input { padding-top: 7px; padding-bottom: 7px; }
+  .expense-sheet textarea.form-input { min-height: 42px; height: 42px; margin-bottom: 7px !important; }
+  .expense-sheet .btn-cancel, .expense-sheet .btn-save { padding: 11px; }
+}
+@media (max-width: 520px) {
+  .expense-sheet { padding-left: 16px; padding-right: 16px; }
+}
+@media (max-width: 390px) {
+  .expense-sheet { padding-left: 12px; padding-right: 12px; }
+  .expense-sheet .date-time-grid { grid-template-columns: minmax(0, .85fr) minmax(0, 1fr); gap: 7px; }
+}
+
+/* Matching add/edit modal component */
+.xm-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-end; justify-content: center; padding: 0; background: rgba(15,35,27,.45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.xm-box { position: relative; width: 100vw; max-width: none; max-height: 100vh; max-height: 100dvh; height: fit-content; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; background: #fff; border-radius: 28px 28px 0 0; padding: 12px 24px calc(16px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -18px 60px rgba(10,30,22,.25); text-align: left; }
+.xm-box::-webkit-scrollbar { display: none; }
+.xm-grab { display: block; width: 40px; height: 4px; margin: 0 auto 12px; border-radius: 4px; background: #DDD9D0; }
+.xm-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.xm-title { font: 700 18px 'Sora', sans-serif; color: #1A2E25; }
+.xm-close { width: 34px; height: 34px; border: 0; border-radius: 50%; background: #F1EFE9; color: #5F5E5A; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.xm-hero { position: relative; overflow: hidden; padding: 16px 18px 14px; border-radius: 22px; color: #fff; background: radial-gradient(ellipse at 92% 0%, rgba(197,242,109,.18), transparent 38%), linear-gradient(120deg,#123c2c,#1b5940); box-shadow: 0 14px 30px rgba(16,56,40,.2); }
+.xm-hero::after { content: ""; position: absolute; width: 150px; height: 150px; right: 30px; top: -92px; border-radius: 50%; pointer-events: none; border: 1px solid rgba(255,255,255,.12); box-shadow: 0 0 0 18px rgba(255,255,255,.035), 0 0 0 38px rgba(255,255,255,.025); }
+.xm-hero > * { position: relative; z-index: 1; }
+.xm-hero-label { font-size: 11px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(255,255,255,.65); }
+.xm-amount { display: flex; align-items: center; gap: 6px; margin-top: 4px; padding-bottom: 6px; border-bottom: 1.5px solid rgba(255,255,255,.18); }
+.xm-amount:focus-within { border-color: #C5F26D; }
+.xm-rupee { font: 700 30px 'Sora', sans-serif; color: #AEDED0; }
+.xm-amount-input { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: #fff; font: 700 40px 'Sora', sans-serif; caret-color: #C5F26D; }
+.xm-amount-input::placeholder { color: rgba(255,255,255,.3); }
+.xm-preview { display: none; width: fit-content; margin-top: 8px; padding: 3px 10px; border-radius: 999px; background: rgba(197,242,109,.18); color: #D8F6A0; font: 700 12px 'Sora', sans-serif; }
+.xm-preview::before { content: "= "; }
+.xm-ex-prev { margin: 4px 0 0 auto; }
+.xm-hint { margin-top: 8px; font-size: 11.5px; color: rgba(255,255,255,.65); }
+.xm-extras { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.xm-extras:empty { display: none; }
+.xm-extra-row { display: flex; align-items: center; gap: 8px; padding: 3px 5px 3px 12px; border-radius: 14px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.12); }
+.xm-extra-row:focus-within { border-color: rgba(197,242,109,.7); }
+.xm-extra-sym { font: 700 13px 'Sora', sans-serif; color: #AEDED0; }
+.xm-extra-input { flex: 1; min-width: 0; padding: 8px 0; border: 0; outline: 0; background: transparent; color: #fff; font: 600 16px 'Sora', sans-serif; caret-color: #C5F26D; }
+.xm-extra-input::placeholder { color: rgba(255,255,255,.4); }
+.xm-x, .xm-chip button { width: 30px; height: 30px; flex-shrink: 0; border: 0; border-radius: 50%; cursor: pointer; color: #fff; background: rgba(255,255,255,.12); display: flex; align-items: center; justify-content: center; }
+.xm-chip { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 3px 3px 3px 12px; border-radius: 999px; background: rgba(255,255,255,.12); font: 700 13px 'Sora', sans-serif; }
+.xm-chip button { width: 26px; height: 26px; }
+.xm-add-extra { margin-top: 10px; padding: 4px 0; display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: #C5F26D; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.xm-total { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,.25); font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,.7); }
+.xm-total b { font: 800 18px 'Sora', sans-serif; color: #fff; }
+.xm-group { margin-top: 14px; border-radius: 18px; background: #F7F5F0; border: 1px solid #ECE9E1; overflow: hidden; }
+.xm-group > * + * { border-top: 1px solid #E8E5DC; }
+.xm-row, .xm-cell { display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 0 14px; }
+.xm-row:focus-within, .xm-cell:focus-within { background: #fff; }
+.xm-split { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.15fr); }
+.xm-cell { gap: 6px; min-width: 0; padding: 0 10px 0 12px; }
+.xm-cell + .xm-cell { border-left: 1px solid #E8E5DC; }
+.xm-ico { display: flex; flex-shrink: 0; color: #7A8F84; }
+.xm-row:focus-within .xm-ico, .xm-cell:focus-within .xm-pick { color: #1A4D3A; }
+.xm-input { flex: 1; min-width: 0; padding: 14px 0; border: 0; outline: 0; background: transparent; color: #1A2E25; font: 600 14px 'Plus Jakarta Sans', sans-serif; }
+.xm-input::placeholder { color: #A9A79F; font-weight: 500; }
+textarea.xm-input { min-height: 56px; resize: none; line-height: 1.45; font-weight: 500; }
+.xm-row-note { align-items: flex-start; }
+.xm-row-note .xm-ico { padding-top: 16px; }
+.xm-pick { position: relative; width: 24px; height: 24px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #7A8F84; }
+.xm-pick input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.xm-ampm { display: flex; flex-shrink: 0; padding: 2px; border-radius: 9px; background: #E8E5DC; }
+.xm-ampm button { padding: 5px 7px; border: 0; border-radius: 7px; background: transparent; color: #8A8880; font-size: 11px; font-weight: 800; cursor: pointer; }
+.xm-ampm button.on { background: #fff; color: #1A4D3A; box-shadow: 0 2px 4px rgba(0,0,0,.08); }
+.xm-error { display: flex; align-items: center; margin-top: 12px; padding: 9px 12px; border-radius: 12px; background: #FEF2F2; color: #B91C1C; font-size: 12px; font-weight: 700; }
+.xm-box .btn-save { display: flex; align-items: center; justify-content: center; width: 100%; margin-top: 16px; padding: 16px; border-radius: 16px; font-size: 15px; font-weight: 800; background: linear-gradient(135deg,#1b5940,#123c2c); box-shadow: 0 12px 24px rgba(18,60,44,.28); }
+.xm-box .btn-save.disabled { background: #D9D6CC; box-shadow: none; }
+.xm-anim { animation: xmFade .25s ease both; }
+.xm-anim .xm-box { animation: xmSheet .4s cubic-bezier(.16,.84,.32,1) both; }
+@keyframes xmFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes xmSheet { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (max-height: 760px) {
+  .xm-box { padding: 8px 18px calc(9px + env(safe-area-inset-bottom, 0px)); }
+  .xm-grab { margin-bottom: 6px; }
+  .xm-head { margin-bottom: 7px; }
+  .xm-hero { padding: 10px 14px 9px; border-radius: 18px; }
+  .xm-rupee { font-size: 25px; }
+  .xm-amount-input { font-size: 34px; }
+  .xm-hint { margin-top: 4px; font-size: 10px; }
+  .xm-extras { gap: 5px; margin-top: 7px; }
+  .xm-extra-input { padding: 5px 0; }
+  .xm-add-extra { margin-top: 6px; }
+  .xm-total { margin-top: 7px; padding-top: 7px; }
+  .xm-group { margin-top: 8px; }
+  .xm-row, .xm-cell { min-height: 42px; }
+  .xm-input { padding-top: 8px; padding-bottom: 8px; }
+  textarea.xm-input { min-height: 42px; }
+  .xm-row-note .xm-ico { padding-top: 11px; }
+  .xm-box .btn-save { margin-top: 9px; padding: 12px; }
+}
+@media (max-width: 520px) { .xm-box { padding-left: 16px; padding-right: 16px; } }
+@media (max-width: 420px) { .xm-box { padding-left: 12px; padding-right: 12px; } .xm-split { grid-template-columns: minmax(0,1fr); } .xm-cell + .xm-cell { border-left: 0; } }
+
 .toast-fixed {
 position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 10px 20px; border-radius: 12px;
 font-size: 13px; font-weight: 500; z-index: 300; white-space: nowrap;
@@ -1507,6 +1643,8 @@ const extraTotal = (modalState.extras || []).reduce((s, ex) => s + (evalAmount(e
 const total = baseAmt + extraTotal;
 const btn = document.getElementById('modal-save-btn');
 if (btn) { const canSave = total > 0 && modalState.name.trim(); btn.className = 'btn-save' + (canSave ? '' : ' disabled'); }
+const totalRow = document.getElementById('modal-total');
+if (totalRow) { totalRow.style.display = (modalState.extras || []).length ? 'flex' : 'none'; totalRow.querySelector('b').textContent = formatINR(total); }
 const mainPrev = document.getElementById('modal-main-preview');
 if (mainPrev) { const hasMathMain = /[+\-*/]/.test(modalState.amountRaw || ''); mainPrev.style.display = hasMathMain ? 'block' : 'none'; mainPrev.innerText = formatINR(baseAmt); }
 (modalState.extras || []).forEach(ex => {
@@ -1664,85 +1802,37 @@ const extraTotal = (m.extras||[]).reduce((s,ex)=>s+(evalAmount(ex.value)||0),0);
 const total = baseAmt+extraTotal;
 const hasMathMain = /[+\-*/]/.test(m.amountRaw || '');
 const canSave = total>0&&m.name.trim();
-const editIcon = `<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#ffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
-const addIcon = `<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#ffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
-return `<div class="modal-overlay center" onclick="closeModal()">
-<div class="modal-box center-box" onclick="event.stopPropagation()">
-<div class="modal-header" style="position:relative;">
-<div style="display:flex;align-items:center;gap:9px">
-<div style="width:28px;height:28px;background:#1A4D3A;border-radius:8px;display:flex;align-items:center;justify-content:center">${m.isEdit?editIcon:addIcon}</div>
-<span class="modal-title">${m.isEdit?'Edit Expense':'Add Expense'}</span>
-</div>
-${m.errorMsg ? `<span style="position:absolute; left:50%; top:100%; transform:translate(-50%, 2px); color:#DC2626; font-size:11px; font-weight:700; white-space:nowrap; animation:fadeIn 0.2s;">${m.errorMsg}</span>` : ''}
-<button class="modal-close" onclick="closeModal()">×</button>
-</div>
-<label class="form-label">Expense Name</label>
-<input class="form-input" style="margin-bottom:14px" placeholder="e.g. Groceries, Petrol" value="${escHtml(m.name)}" oninput="handleModalName(this)">
-<label class="form-label">Amount</label>
-<div style="margin-bottom: 8px;">
-<div class="amount-row" style="margin-bottom: 2px;">
-<div class="currency-badge">₹ <span style="font-weight:400;color:#8A8880">INR</span></div>
-<input class="form-input" style="flex:1" placeholder="0.00 or =230+60" value="${escHtml(m.amountRaw)}" oninput="handleModalAmount(this)" onblur="evaluateInput('main', this)">
-</div>
-<div id="modal-main-preview" style="${hasMathMain?'display:block':'display:none'}; text-align: right; padding-right: 4px; font-size: 12px; font-weight: 700; color: #1A4D3A;">${formatINR(baseAmt)}</div>
-</div>
-${(m.extras||[]).map(ex=>{
-if (ex.locked) {
-const exAmt = parseFloat(ex.value) || 0;
-return `<div style="margin-bottom: 8px;">
-<div style="display:flex;gap:8px;margin-bottom:2px;align-items:center;">
-<div class="currency-badge" style="align-self:stretch;">+ ₹</div>
-<div style="flex:1;padding:11px 13px;border-radius:11px;border:0.5px solid #D3D1C7;font-size:14px;color:#8A8880;background:#F0EEE8;">${formatINR(exAmt)}</div>
-<button style="background:#F0FDF4;border:none;border-radius:9px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#16A34A;flex-shrink:0;" onclick="unlockModalExtra(${ex.id})" title="Edit"><svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-<button style="background:#FEF2F2;border:none;border-radius:9px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#DC2626;flex-shrink:0;" onclick="removeModalExtra(${ex.id})" title="Delete"><svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>
-</div>
-</div>`;
-}
+const ic = (d, s=16, w=2) => `<svg width="${s}" height="${s}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I = {
+close: ic('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', 16, 2.4),
+tag: ic('<path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>', 17),
+cal: ic('<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>', 17),
+clock: ic('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>', 17),
+note: ic('<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>', 17),
+edit: ic('<path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>', 13),
+trash: ic('<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/>', 13),
+plus: ic('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>', 13, 2.6)
+};
+const extrasHTML = (m.extras||[]).map(ex=>{
+if (ex.locked) return `<div class="xm-chip"><span>+ ${formatINR(parseFloat(ex.value)||0)}</span><button type="button" onclick="unlockModalExtra(${ex.id})" title="Edit">${I.edit}</button><button type="button" onclick="removeModalExtra(${ex.id})" title="Remove">${I.trash}</button></div>`;
 const hasMathEx = /[+\-*/]/.test(ex.value || '');
-return `<div style="margin-bottom: 8px;">
-<div style="display:flex;gap:8px;margin-bottom:2px;">
-<div class="currency-badge" style="align-self:stretch;">+ ₹</div>
-<input class="form-input" style="flex:1" placeholder="Extra amount" value="${escHtml(ex.value)}" oninput="handleModalExtra(${ex.id}, this)" onblur="evaluateInput(${ex.id}, this)">
-<button style="background:#FEF2F2;border:none;border-radius:9px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#DC2626;flex-shrink:0;" onclick="removeModalExtra(${ex.id})" title="Delete"><svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>
-</div>
-<div id="modal-ex-preview-${ex.id}" style="${hasMathEx?'display:block':'display:none'}; text-align: right; padding-right: 48px; font-size: 12px; font-weight: 700; color: #1A4D3A;">${formatINR(evalAmount(ex.value)||0)}</div>
-</div>`;
-}).join('')}
-<button class="add-extra-btn" onclick="addModalExtra()" style="margin-top: 4px;"><span style="font-size:16px;line-height:1">+</span> Add Extra Amount</button>
-
-<div class="date-time-grid">
-<div>
-<label class="form-label">Date</label>
-<div class="input-with-icon">
-<input class="form-input" placeholder="DD-MM-YYYY" value="${escHtml(m.dateStr)}" oninput="handleModalDate(this)">
-<input type="date" style="position:absolute; right:0; top:0; width:36px; height:100%; opacity:0; cursor:pointer; z-index:10;" onchange="handleNativeDate(this.value)" onclick="try{this.showPicker()}catch(e){}">
-<span class="input-icon">${SVG.calSmall}</span>
-</div>
-</div>
-<div>
-<label class="form-label">Time</label>
-<div style="display:flex; gap:6px; align-items:center;">
-<div class="input-with-icon" style="flex:1;">
-<input class="form-input" placeholder="12:00" value="${escHtml(m.timeStr)}" oninput="handleModalTime(this)">
-<input type="time" style="position:absolute; right:0; top:0; width:36px; height:100%; opacity:0; cursor:pointer; z-index:10;" onchange="handleNativeTime(this.value)" onclick="try{this.showPicker()}catch(e){}">
-<span class="input-icon" style="right:8px;">${SVG.clock}</span>
-</div>
-<div style="display:flex; background:#EAE8E0; border-radius:9px; padding:2px; height: 38px;">
-<button style="border:none; background:${m.ampm==='AM'?'#fff':'transparent'}; border-radius:7px; padding:0 8px; font-size:12px; font-weight:700; color:${m.ampm==='AM'?'#1A4D3A':'#8A8880'}; cursor:pointer; box-shadow:${m.ampm==='AM'?'0 2px 4px rgba(0,0,0,0.05)':'none'}; transition:all 0.2s;" onclick="toggleModalAmPm('AM')">AM</button>
-<button style="border:none; background:${m.ampm==='PM'?'#fff':'transparent'}; border-radius:7px; padding:0 8px; font-size:12px; font-weight:700; color:${m.ampm==='PM'?'#1A4D3A':'#8A8880'}; cursor:pointer; box-shadow:${m.ampm==='PM'?'0 2px 4px rgba(0,0,0,0.05)':'none'}; transition:all 0.2s;" onclick="toggleModalAmPm('PM')">PM</button>
-</div>
-</div>
-</div>
-</div>
-
-<label class="form-label">Description (Optional)</label>
-<textarea class="form-input" style="margin-bottom:18px" placeholder="Add notes about this expense..." oninput="modalState.desc=this.value">${escHtml(m.desc)}</textarea>
-<div class="modal-btn-row">
-<button class="btn-cancel" onclick="closeModal()">Cancel</button>
-<button class="btn-save${canSave?'':' disabled'}" id="modal-save-btn" onclick="saveModal()">Save Expense</button>
-</div>
-</div>
-</div>`;
+return `<div><div class="xm-extra-row"><span class="xm-extra-sym">+ ₹</span><input class="xm-extra-input" autocomplete="off" placeholder="Extra amount" value="${escHtml(ex.value)}" oninput="handleModalExtra(${ex.id}, this)" onblur="evaluateInput(${ex.id}, this)"><button type="button" class="xm-x" onclick="removeModalExtra(${ex.id})" title="Remove">${I.trash}</button></div><div class="xm-preview xm-ex-prev" id="modal-ex-preview-${ex.id}" style="${hasMathEx?'display:block':'display:none'}">${formatINR(evalAmount(ex.value)||0)}</div></div>`;
+}).join('');
+const anim = !m._shown; m._shown = true;
+return `<div class="xm-overlay${anim?' xm-anim':''}" onclick="closeModal()">
+<div class="xm-box" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+<div class="xm-grab" aria-hidden="true"></div>
+<div class="xm-head"><div class="xm-title">${m.isEdit?'Edit expense':'New expense'}</div><button type="button" class="xm-close" onclick="closeModal()" aria-label="Close">${I.close}</button></div>
+<div class="xm-hero"><div class="xm-hero-label">Amount</div><div class="xm-amount"><span class="xm-rupee">₹</span><input class="xm-amount-input" autocomplete="off" placeholder="0" value="${escHtml(m.amountRaw)}" oninput="handleModalAmount(this)" onblur="evaluateInput('main', this)"></div>
+<div class="xm-preview" id="modal-main-preview" style="${hasMathMain?'display:block':'display:none'}">${formatINR(baseAmt)}</div>
+${m.isEdit?'':'<div class="xm-hint">Tip: type math like 230+60 and it adds up for you</div>'}<div class="xm-extras">${extrasHTML}</div>
+<button type="button" class="xm-add-extra" onclick="addModalExtra()">${I.plus} Add extra amount</button><div class="xm-total" id="modal-total" style="${(m.extras||[]).length?'':'display:none'}"><span>Total</span><b>${formatINR(total)}</b></div></div>
+<div class="xm-group"><label class="xm-row"><span class="xm-ico">${I.tag}</span><input class="xm-input" autocomplete="off" placeholder="What was it for? e.g. Petrol" value="${escHtml(m.name)}" oninput="handleModalName(this)"></label>
+<div class="xm-split"><div class="xm-cell"><span class="xm-pick">${I.cal}<input type="date" onchange="handleNativeDate(this.value)" onclick="try{this.showPicker()}catch(e){}"></span><input class="xm-input" inputmode="numeric" placeholder="DD-MM-YYYY" value="${escHtml(m.dateStr)}" oninput="handleModalDate(this)"></div>
+<div class="xm-cell"><span class="xm-pick">${I.clock}<input type="time" onchange="handleNativeTime(this.value)" onclick="try{this.showPicker()}catch(e){}"></span><input class="xm-input" inputmode="numeric" placeholder="12:00" value="${escHtml(m.timeStr)}" oninput="handleModalTime(this)"><div class="xm-ampm"><button type="button" class="${m.ampm==='AM'?'on':''}" onclick="toggleModalAmPm('AM')">AM</button><button type="button" class="${m.ampm==='PM'?'on':''}" onclick="toggleModalAmPm('PM')">PM</button></div></div></div>
+<label class="xm-row xm-row-note"><span class="xm-ico">${I.note}</span><textarea class="xm-input" rows="2" placeholder="Add a note (optional)" oninput="modalState.desc=this.value">${escHtml(m.desc)}</textarea></label></div>
+${m.errorMsg ? `<div class="xm-error">${m.errorMsg}</div>` : ''}<button type="button" class="btn-save${canSave?'':' disabled'}" id="modal-save-btn" onclick="saveModal()">${m.isEdit?'Update expense':'Save expense'}</button>
+</div></div>`;
 }
 
 function renderAddCatModal() {
